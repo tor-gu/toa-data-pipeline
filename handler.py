@@ -5,6 +5,8 @@ import awswrangler as wr
 import boto3
 import pandas as pd
 
+from toa.logging import Domain, get_logger
+
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 SCORE_FUNCTION_NAME = os.environ["SCORE_FUNCTION_NAME"]
 SD = float(os.environ["SD"])
@@ -14,6 +16,8 @@ CONSOLIDATED_PATH = f"s3://{DATA_BUCKET}/results/consolidated/results.parquet"
 SCORES_PATH = f"s3://{DATA_BUCKET}/scores/scores.parquet"
 
 lambda_client = boto3.client("lambda")
+
+logger = get_logger(name="scores-updater", domain=Domain.SCORING_PIPELINE)
 
 
 def expand_pairs(match_id, order):
@@ -37,33 +41,41 @@ def invoke_score_lambda(pairs):
 
 
 def handler(_event, context):
-    consolidated = wr.s3.read_parquet(CONSOLIDATED_PATH)
-
+    logger.info("handler started")
     try:
-        scores = wr.s3.read_parquet(SCORES_PATH)
-    except wr.exceptions.NoFilesFound:
-        scores = pd.DataFrame(columns=["id", "score", "robustness", "date"])
+        consolidated = wr.s3.read_parquet(CONSOLIDATED_PATH)
 
-    result_dates = sorted(consolidated["date"].unique())
-    scored_dates = set(scores["date"].unique()) if not scores.empty else set()
-    most_recent = result_dates[-1]
+        try:
+            scores = wr.s3.read_parquet(SCORES_PATH)
+        except wr.exceptions.NoFilesFound:
+            scores = pd.DataFrame(columns=["id", "score", "robustness", "date"])
 
-    dates_to_process = sorted((set(result_dates) - scored_dates) | {most_recent})
+        result_dates = sorted(consolidated["date"].unique())
+        scored_dates = set(scores["date"].unique()) if not scores.empty else set()
+        most_recent = result_dates[-1]
 
-    scores = scores[scores["date"] != most_recent]
+        dates_to_process = sorted((set(result_dates) - scored_dates) | {most_recent})
 
-    new_rows = []
-    for date in dates_to_process:
-        subset = consolidated[consolidated["date"] <= date]
-        pairs = []
-        for match_id, order in zip(subset["match_id"], subset["order"]):
-            pairs.extend(expand_pairs(match_id, order))
+        scores = scores[scores["date"] != most_recent]
 
-        scored = invoke_score_lambda(pairs)
-        for row in scored:
-            row["date"] = date
-        new_rows.extend(scored)
+        new_rows = []
+        for date in dates_to_process:
+            subset = consolidated[consolidated["date"] <= date]
+            pairs = []
+            for match_id, order in zip(subset["match_id"], subset["order"]):
+                pairs.extend(expand_pairs(match_id, order))
 
-    if new_rows:
-        updated = pd.concat([scores, pd.DataFrame(new_rows)], ignore_index=True)
-        wr.s3.to_parquet(updated, path=SCORES_PATH)
+            scored = invoke_score_lambda(pairs)
+            for row in scored:
+                row["date"] = date
+            new_rows.extend(scored)
+            logger.info("scored date", extra={"date": date, "num_scores": len(scored)})
+
+        if new_rows:
+            updated = pd.concat([scores, pd.DataFrame(new_rows)], ignore_index=True)
+            wr.s3.to_parquet(updated, path=SCORES_PATH)
+
+        logger.info("scoring complete", extra={"dates_processed": len(dates_to_process)})
+    except Exception:
+        logger.exception("handler error")
+        raise
