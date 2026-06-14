@@ -52,8 +52,9 @@ def handler(event, context):
             )
             s3.delete_object(Bucket=DATA_BUCKET, Key=key)
 
-        logger.info("consolidation complete", extra={"files_processed": len(keys), "total_records": len(combined)})
-        return {"files_processed": len(keys)}
+        earliest_date = min(r["date"] for r in new_results)
+        logger.info("consolidation complete", extra={"files_processed": len(keys), "total_records": len(combined), "earliest_date": earliest_date})
+        return {"files_processed": len(keys), "earliest_date": earliest_date}
     except Exception:
         logger.exception("handler error")
         raise
