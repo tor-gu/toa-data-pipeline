@@ -40,9 +40,11 @@ def invoke_score_lambda(pairs):
     return json.loads(payload["body"])["scores"]
 
 
-def handler(_event, context):
+def handler(event, _context):
     logger.info("handler started")
     try:
+        earliest_date = event["earliest_date"]
+
         consolidated = wr.s3.read_parquet(CONSOLIDATED_PATH)
 
         try:
@@ -51,12 +53,8 @@ def handler(_event, context):
             scores = pd.DataFrame(columns=["id", "score", "robustness", "date"])
 
         result_dates = sorted(consolidated["date"].unique())
-        scored_dates = set(scores["date"].unique()) if not scores.empty else set()
-        most_recent = result_dates[-1]
-
-        dates_to_process = sorted((set(result_dates) - scored_dates) | {most_recent})
-
-        scores = scores[scores["date"] != most_recent]
+        dates_to_process = [d for d in result_dates if d >= earliest_date]
+        scores = scores[scores["date"] < earliest_date]
 
         new_rows = []
         for date in dates_to_process:
