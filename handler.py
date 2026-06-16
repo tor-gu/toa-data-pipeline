@@ -5,6 +5,7 @@ import awswrangler as wr
 import boto3
 import pandas as pd
 
+from toa.columns import ResultsCol, ScoresCol
 from toa.logging import Domain, get_logger
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
@@ -50,22 +51,22 @@ def handler(event, _context):
         try:
             scores = wr.s3.read_parquet(SCORES_PATH)
         except wr.exceptions.NoFilesFound:
-            scores = pd.DataFrame(columns=["id", "score", "robustness", "date"])
+            scores = pd.DataFrame(columns=[ScoresCol.ID, ScoresCol.SCORE, ScoresCol.ROBUSTNESS, ScoresCol.DATE])
 
-        result_dates = sorted(consolidated["date"].unique())
+        result_dates = sorted(consolidated[ResultsCol.DATE].unique())
         dates_to_process = [d for d in result_dates if d >= earliest_date]
-        scores = scores[scores["date"] < earliest_date]
+        scores = scores[scores[ScoresCol.DATE] < earliest_date]
 
         new_rows = []
         for date in dates_to_process:
-            subset = consolidated[consolidated["date"] <= date]
+            subset = consolidated[consolidated[ResultsCol.DATE] <= date]
             pairs = []
-            for match_id, order in zip(subset["match_id"], subset["order"]):
+            for match_id, order in zip(subset[ResultsCol.MATCH_ID], subset[ResultsCol.ORDER]):
                 pairs.extend(expand_pairs(match_id, order))
 
             scored = invoke_score_lambda(pairs)
             for row in scored:
-                row["date"] = date
+                row[ScoresCol.DATE] = date
             new_rows.extend(scored)
             logger.info("scored date", extra={"date": date, "num_scores": len(scored)})
 
