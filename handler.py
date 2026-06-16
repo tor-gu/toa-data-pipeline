@@ -5,6 +5,7 @@ import awswrangler as wr
 import boto3
 import pandas as pd
 
+from toa.columns import ResultsCol
 from toa.logging import Domain, get_logger
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
@@ -35,10 +36,10 @@ def handler(event, context):
         try:
             existing = wr.s3.read_parquet(CONSOLIDATED_PATH)
         except wr.exceptions.NoFilesFound:
-            existing = pd.DataFrame(columns=["match_id", "date", "order"])
+            existing = pd.DataFrame(columns=[ResultsCol.MATCH_ID, ResultsCol.DATE, ResultsCol.ORDER])
 
-        new_ids = {r["match_id"] for r in new_results}
-        existing = existing[~existing["match_id"].isin(new_ids)]
+        new_ids = {r[ResultsCol.MATCH_ID] for r in new_results}
+        existing = existing[~existing[ResultsCol.MATCH_ID].isin(new_ids)]
         combined = pd.concat([existing, pd.DataFrame(new_results)], ignore_index=True)
 
         wr.s3.to_parquet(combined, path=CONSOLIDATED_PATH)
@@ -52,7 +53,7 @@ def handler(event, context):
             )
             s3.delete_object(Bucket=DATA_BUCKET, Key=key)
 
-        earliest_date = min(r["date"] for r in new_results)
+        earliest_date = min(r[ResultsCol.DATE] for r in new_results)
         logger.info("consolidation complete", extra={"files_processed": len(keys), "total_records": len(combined), "earliest_date": earliest_date})
         return {"files_processed": len(keys), "earliest_date": earliest_date}
     except Exception:
