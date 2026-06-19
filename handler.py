@@ -5,6 +5,7 @@ import awswrangler as wr
 import boto3
 import pandas as pd
 
+from toa.columns import NamesCol
 from toa.logging import Domain, get_logger
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
@@ -31,7 +32,7 @@ def handler(event, context):
             obj = s3.get_object(Bucket=DATA_BUCKET, Key=key)
             names.append(json.loads(obj["Body"].read()))
 
-        df = pd.DataFrame(names)[["id", "artist", "album"]]
+        df = pd.DataFrame(names)[[NamesCol.ID, NamesCol.ARTIST, NamesCol.ALBUM]]
         wr.s3.to_parquet(df, path=CONSOLIDATED_PATH)
 
         logger.info("consolidation complete", extra={"names_consolidated": len(df)})
