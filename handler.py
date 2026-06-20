@@ -7,14 +7,15 @@ import pandas as pd
 
 from toa.columns import ResultsCol, ScoresCol
 from toa.logging import Domain, get_logger
+from toa.paths import RESULTS_CONSOLIDATED_KEY, SCORES_KEY
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 SCORE_FUNCTION_NAME = os.environ["SCORE_FUNCTION_NAME"]
 SD = float(os.environ["SD"])
 UNIT_WIN_PROB = float(os.environ["UNIT_WIN_PROB"])
 
-CONSOLIDATED_PATH = f"s3://{DATA_BUCKET}/results/consolidated/results.parquet"
-SCORES_PATH = f"s3://{DATA_BUCKET}/scores/scores.parquet"
+CONSOLIDATED_PATH = f"s3://{DATA_BUCKET}/{RESULTS_CONSOLIDATED_KEY}"
+SCORES_PATH = f"s3://{DATA_BUCKET}/{SCORES_KEY}"
 
 lambda_client = boto3.client("lambda")
 
