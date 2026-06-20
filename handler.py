@@ -7,11 +7,12 @@ import pandas as pd
 
 from toa.columns import ResultsCol
 from toa.logging import Domain, get_logger
+from toa.paths import RESULTS_CONSOLIDATED_KEY, RESULTS_PROCESSED_PREFIX, RESULTS_UNPROCESSED_PREFIX
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
-UNPROCESSED_PREFIX = "results/unprocessed/"
-PROCESSED_PREFIX = "results/processed/"
-CONSOLIDATED_PATH = f"s3://{DATA_BUCKET}/results/consolidated/results.parquet"
+UNPROCESSED_PREFIX = RESULTS_UNPROCESSED_PREFIX
+PROCESSED_PREFIX = RESULTS_PROCESSED_PREFIX
+CONSOLIDATED_PATH = f"s3://{DATA_BUCKET}/{RESULTS_CONSOLIDATED_KEY}"
 
 s3 = boto3.client("s3")
 
