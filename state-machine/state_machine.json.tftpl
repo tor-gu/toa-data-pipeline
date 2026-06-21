@@ -72,6 +72,33 @@
           "earliest_date.$": "$.consolidateOutput.Payload.earliest_date"
         }
       },
+      "ResultPath": "$.scoresOutput",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 10,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FinalizeFailure"
+        }
+      ],
+      "Next": "SyncDynamoDB"
+    },
+    "SyncDynamoDB": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${dynamodb_writer_arn}",
+        "Payload": {
+          "earliest_date.$": "$.consolidateOutput.Payload.earliest_date"
+        }
+      },
       "Retry": [
         {
           "ErrorEquals": ["Lambda.TooManyRequestsException"],
