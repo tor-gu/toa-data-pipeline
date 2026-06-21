@@ -67,6 +67,8 @@ def _write_matches(matches_table, album_matches_table, affected_results, names):
                     "album_id": album_id,
                     "match_id": match_id,
                     "date": date,
+                    "artist": names.get(album_id, {}).get("artist", ""),
+                    "album": names.get(album_id, {}).get("album", ""),
                 })
 
 
