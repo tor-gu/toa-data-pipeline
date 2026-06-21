@@ -1,7 +1,6 @@
 import os
 
 import boto3
-
 from toa.logging import Domain, get_logger
 
 STATE_MACHINE_ARN = os.environ["STATE_MACHINE_ARN"]

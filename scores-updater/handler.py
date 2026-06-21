@@ -4,7 +4,6 @@ import os
 import awswrangler as wr
 import boto3
 import pandas as pd
-
 from toa.columns import ResultsCol, ScoresCol
 from toa.logging import Domain, get_logger
 from toa.paths import RESULTS_CONSOLIDATED_KEY, SCORES_KEY
@@ -32,13 +31,17 @@ def expand_pairs(match_id, order):
 def invoke_score_lambda(pairs):
     response = lambda_client.invoke(
         FunctionName=SCORE_FUNCTION_NAME,
-        Payload=json.dumps({"results": pairs, "sd": SD, "unit_win_prob": UNIT_WIN_PROB}),
+        Payload=json.dumps(
+            {"results": pairs, "sd": SD, "unit_win_prob": UNIT_WIN_PROB}
+        ),
     )
     payload = json.loads(response["Payload"].read())
     if response.get("FunctionError"):
         raise RuntimeError(f"Score Lambda error: {payload}")
     if payload.get("statusCode", 200) != 200:
-        raise RuntimeError(f"Score Lambda returned {payload['statusCode']}: {payload.get('body')}")
+        raise RuntimeError(
+            f"Score Lambda returned {payload['statusCode']}: {payload.get('body')}"
+        )
     return json.loads(payload["body"])["scores"]
 
 
@@ -52,7 +55,14 @@ def handler(event, _context):
         try:
             scores = wr.s3.read_parquet(SCORES_PATH)
         except wr.exceptions.NoFilesFound:
-            scores = pd.DataFrame(columns=[ScoresCol.ID, ScoresCol.SCORE, ScoresCol.ROBUSTNESS, ScoresCol.DATE])
+            scores = pd.DataFrame(
+                columns=[
+                    ScoresCol.ID,
+                    ScoresCol.SCORE,
+                    ScoresCol.ROBUSTNESS,
+                    ScoresCol.DATE,
+                ]
+            )
 
         result_dates = sorted(consolidated[ResultsCol.DATE].unique())
         dates_to_process = [d for d in result_dates if d >= earliest_date]
@@ -62,7 +72,9 @@ def handler(event, _context):
         for date in dates_to_process:
             subset = consolidated[consolidated[ResultsCol.DATE] <= date]
             pairs = []
-            for match_id, order in zip(subset[ResultsCol.MATCH_ID], subset[ResultsCol.ORDER]):
+            for match_id, order in zip(
+                subset[ResultsCol.MATCH_ID], subset[ResultsCol.ORDER]
+            ):
                 pairs.extend(expand_pairs(match_id, order))
 
             scored = invoke_score_lambda(pairs)
@@ -75,7 +87,9 @@ def handler(event, _context):
             updated = pd.concat([scores, pd.DataFrame(new_rows)], ignore_index=True)
             wr.s3.to_parquet(updated, path=SCORES_PATH)
 
-        logger.info("scoring complete", extra={"dates_processed": len(dates_to_process)})
+        logger.info(
+            "scoring complete", extra={"dates_processed": len(dates_to_process)}
+        )
     except Exception:
         logger.exception("handler error")
         raise

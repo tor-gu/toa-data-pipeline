@@ -4,7 +4,6 @@ import os
 import awswrangler as wr
 import boto3
 import pandas as pd
-
 from toa.columns import NamesCol
 from toa.logging import Domain, get_logger
 from toa.paths import NAMES_CONSOLIDATED_KEY, NAMES_UNPROCESSED_PREFIX
@@ -22,7 +21,11 @@ def handler(event, context):
     logger.info("handler started")
     try:
         response = s3.list_objects_v2(Bucket=DATA_BUCKET, Prefix=UNPROCESSED_PREFIX)
-        keys = [obj["Key"] for obj in response.get("Contents", []) if obj["Key"] != UNPROCESSED_PREFIX]
+        keys = [
+            obj["Key"]
+            for obj in response.get("Contents", [])
+            if obj["Key"] != UNPROCESSED_PREFIX
+        ]
 
         if not keys:
             logger.info("no name files found")
