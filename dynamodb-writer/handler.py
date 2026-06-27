@@ -22,7 +22,11 @@ dynamodb = boto3.resource("dynamodb")
 
 def _build_names(names_df):
     return {
-        row[NamesCol.ID]: {"artist": row[NamesCol.ARTIST], "album": row[NamesCol.ALBUM]}
+        row[NamesCol.ID]: {
+            "artist": row[NamesCol.ARTIST],
+            "album": row[NamesCol.ALBUM],
+            "short-name": row[NamesCol.SHORT_NAME],
+        }
         for _, row in names_df.iterrows()
     }
 
@@ -39,6 +43,7 @@ def _write_scores(table, affected_scores, names, latest_date):
                     "robustness": Decimal(str(row[ScoresCol.ROBUSTNESS])),
                     "artist": name.get("artist", ""),
                     "album": name.get("album", ""),
+                    "short-name": name.get("short-name", ""),
                 }
             )
     table.put_item(Item={"id": "METADATA", "date": "latest_date", "value": latest_date})
@@ -60,6 +65,7 @@ def _write_matches(matches_table, album_matches_table, affected_results, names):
                     "id": album_id,
                     "artist": names.get(album_id, {}).get("artist", ""),
                     "album": names.get(album_id, {}).get("album", ""),
+                    "short-name": names.get(album_id, {}).get("short-name", ""),
                 }
                 for i, album_id in enumerate(order)
             ]
@@ -76,6 +82,7 @@ def _write_matches(matches_table, album_matches_table, affected_results, names):
                         "date": date,
                         "artist": names.get(album_id, {}).get("artist", ""),
                         "album": names.get(album_id, {}).get("album", ""),
+                        "short-name": names.get(album_id, {}).get("short-name", ""),
                     }
                 )
 
@@ -83,7 +90,11 @@ def _write_matches(matches_table, album_matches_table, affected_results, names):
 def handler(event, _context):
     logger.info("handler started")
     try:
-        earliest_date = event["earliest_date"]
+        rebuild = event.get("rebuild", False)
+        earliest_date = None if rebuild else event["earliest_date"]
+
+        if rebuild:
+            logger.info("rebuild mode: writing all records")
 
         logger.info("reading names")
         names = _build_names(wr.s3.read_parquet(NAMES_PATH))
@@ -91,7 +102,7 @@ def handler(event, _context):
 
         logger.info("reading scores", extra={"earliest_date": earliest_date})
         scores_df = wr.s3.read_parquet(SCORES_PATH)
-        affected_scores = scores_df[scores_df[ScoresCol.DATE] >= earliest_date]
+        affected_scores = scores_df if rebuild else scores_df[scores_df[ScoresCol.DATE] >= earliest_date]
         logger.info(
             "scores loaded",
             extra={"total": len(scores_df), "affected": len(affected_scores)},
@@ -99,7 +110,7 @@ def handler(event, _context):
 
         logger.info("reading results")
         results_df = wr.s3.read_parquet(RESULTS_PATH)
-        affected_results = results_df[results_df[ResultsCol.DATE] >= earliest_date]
+        affected_results = results_df if rebuild else results_df[results_df[ResultsCol.DATE] >= earliest_date]
         logger.info(
             "results loaded",
             extra={"total": len(results_df), "affected": len(affected_results)},
