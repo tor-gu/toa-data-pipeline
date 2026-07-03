@@ -1,11 +1,15 @@
 import os
-from decimal import Decimal
 
 import awswrangler as wr
 import boto3
 from toa.columns import NamesCol, ResultsCol, ScoresCol
 from toa.logging import Domain, get_logger
-from toa.paths import NAMES_CONSOLIDATED_KEY, RESULTS_CONSOLIDATED_KEY, SCORES_KEY
+from toa.paths import (
+    ENRICHED_SCORES_KEY,
+    NAMES_CONSOLIDATED_KEY,
+    RESULTS_CONSOLIDATED_KEY,
+)
+from transform import build_scores_lookup, ranking_entry, score_item
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 SCORES_TABLE = os.environ["SCORES_TABLE"]
@@ -14,7 +18,7 @@ ALBUM_MATCHES_TABLE = os.environ["ALBUM_MATCHES_TABLE"]
 
 NAMES_PATH = f"s3://{DATA_BUCKET}/{NAMES_CONSOLIDATED_KEY}"
 RESULTS_PATH = f"s3://{DATA_BUCKET}/{RESULTS_CONSOLIDATED_KEY}"
-SCORES_PATH = f"s3://{DATA_BUCKET}/{SCORES_KEY}"
+SCORES_PATH = f"s3://{DATA_BUCKET}/{ENRICHED_SCORES_KEY}"
 
 logger = get_logger(name="dynamodb-writer", domain=Domain.SCORING_PIPELINE)
 dynamodb = boto3.resource("dynamodb")
@@ -35,21 +39,13 @@ def _write_scores(table, affected_scores, names, latest_date):
     with table.batch_writer() as batch:
         for _, row in affected_scores.iterrows():
             name = names.get(row[ScoresCol.ID], {})
-            batch.put_item(
-                Item={
-                    "id": row[ScoresCol.ID],
-                    "date": row[ScoresCol.DATE],
-                    "score": Decimal(str(row[ScoresCol.SCORE])),
-                    "robustness": Decimal(str(row[ScoresCol.ROBUSTNESS])),
-                    "artist": name.get("artist", ""),
-                    "album": name.get("album", ""),
-                    "short-name": name.get("short-name", ""),
-                }
-            )
+            batch.put_item(Item=score_item(row, name))
     table.put_item(Item={"id": "METADATA", "date": "latest_date", "value": latest_date})
 
 
-def _write_matches(matches_table, album_matches_table, affected_results, names):
+def _write_matches(
+    matches_table, album_matches_table, affected_results, names, scores_lookup
+):
     with (
         matches_table.batch_writer() as matches_batch,
         album_matches_table.batch_writer() as album_matches_batch,
@@ -60,13 +56,7 @@ def _write_matches(matches_table, album_matches_table, affected_results, names):
             order = row[ResultsCol.ORDER]
 
             ranking = [
-                {
-                    "rank": i + 1,
-                    "id": album_id,
-                    "artist": names.get(album_id, {}).get("artist", ""),
-                    "album": names.get(album_id, {}).get("album", ""),
-                    "short-name": names.get(album_id, {}).get("short-name", ""),
-                }
+                ranking_entry(i, album_id, date, names, scores_lookup)
                 for i, album_id in enumerate(order)
             ]
 
@@ -102,7 +92,11 @@ def handler(event, _context):
 
         logger.info("reading scores", extra={"earliest_date": earliest_date})
         scores_df = wr.s3.read_parquet(SCORES_PATH)
-        affected_scores = scores_df if rebuild else scores_df[scores_df[ScoresCol.DATE] >= earliest_date]
+        affected_scores = (
+            scores_df
+            if rebuild
+            else scores_df[scores_df[ScoresCol.DATE] >= earliest_date]
+        )
         logger.info(
             "scores loaded",
             extra={"total": len(scores_df), "affected": len(affected_scores)},
@@ -110,7 +104,11 @@ def handler(event, _context):
 
         logger.info("reading results")
         results_df = wr.s3.read_parquet(RESULTS_PATH)
-        affected_results = results_df if rebuild else results_df[results_df[ResultsCol.DATE] >= earliest_date]
+        affected_results = (
+            results_df
+            if rebuild
+            else results_df[results_df[ResultsCol.DATE] >= earliest_date]
+        )
         logger.info(
             "results loaded",
             extra={"total": len(results_df), "affected": len(affected_results)},
@@ -125,11 +123,13 @@ def handler(event, _context):
         )
 
         logger.info("writing matches to dynamodb")
+        scores_lookup = build_scores_lookup(affected_scores)
         _write_matches(
             dynamodb.Table(MATCHES_TABLE),
             dynamodb.Table(ALBUM_MATCHES_TABLE),
             affected_results,
             names,
+            scores_lookup,
         )
         logger.info("matches written", extra={"count": len(affected_results)})
 
