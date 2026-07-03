@@ -88,6 +88,31 @@
           "Next": "FinalizeFailure"
         }
       ],
+      "Next": "EnrichScores"
+    },
+    "EnrichScores": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${scores_enricher_arn}",
+        "Payload": {}
+      },
+      "ResultPath": "$.enrichOutput",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 10,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FinalizeFailure"
+        }
+      ],
       "Next": "SyncDynamoDB"
     },
     "SyncDynamoDB": {
