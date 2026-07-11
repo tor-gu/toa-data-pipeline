@@ -61,7 +61,13 @@ def _write_matches(
             ]
 
             matches_batch.put_item(
-                Item={"match_id": match_id, "date": date, "ranking": ranking}
+                Item={
+                    "match_id": match_id,
+                    "date": date,
+                    "ranking": ranking,
+                    "gsi_pk": "MATCH",
+                    "date_match_id": f"{date}#{match_id}",
+                }
             )
 
             for album_id in order:
