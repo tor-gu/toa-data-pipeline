@@ -1,8 +1,14 @@
 from decimal import Decimal
 
 import pandas as pd
-from toa.columns import ScoresCol
-from transform import build_scores_lookup, ranking_entry, score_item, to_decimal
+from toa.columns import ScoresCol, StatisticsCol
+from transform import (
+    build_scores_lookup,
+    ranking_entry,
+    score_item,
+    statistics_items,
+    to_decimal,
+)
 
 # ── to_decimal ──────────────────────────────────────────────────────────────
 
@@ -122,3 +128,30 @@ def test_ranking_entry_missing_score_defaults_to_none():
     assert entry["rank"] == 3
     assert entry["is_new"] is None
     assert entry["score_delta"] is None
+
+
+# ── statistics_items ────────────────────────────────────────────────────────────
+
+
+def test_statistics_items_shape_and_values():
+    row = pd.Series(
+        {
+            StatisticsCol.EARLIEST_MATCH: "2024-01-01",
+            StatisticsCol.LATEST_MATCH: "2024-06-01",
+            StatisticsCol.MIN_SCORE: -1.5,
+            StatisticsCol.MAX_SCORE: 3.25,
+            StatisticsCol.NUM_ALBUMS: 42,
+            StatisticsCol.NUM_MATCHES: 100,
+        }
+    )
+
+    items = statistics_items(row)
+
+    by_key = {item["key"]: item["value"] for item in items}
+    assert by_key[StatisticsCol.EARLIEST_MATCH] == "2024-01-01"
+    assert by_key[StatisticsCol.LATEST_MATCH] == "2024-06-01"
+    assert by_key[StatisticsCol.MIN_SCORE] == Decimal("-1.5")
+    assert by_key[StatisticsCol.MAX_SCORE] == Decimal("3.25")
+    assert by_key[StatisticsCol.NUM_ALBUMS] == Decimal("42")
+    assert by_key[StatisticsCol.NUM_MATCHES] == Decimal("100")
+    assert len(items) == 6

@@ -6,19 +6,22 @@ from toa.columns import NamesCol, ResultsCol, ScoresCol
 from toa.logging import Domain, get_logger
 from toa.paths import (
     ENRICHED_SCORES_KEY,
+    GLOBAL_STATISTICS_KEY,
     NAMES_CONSOLIDATED_KEY,
     RESULTS_CONSOLIDATED_KEY,
 )
-from transform import build_scores_lookup, ranking_entry, score_item
+from transform import build_scores_lookup, ranking_entry, score_item, statistics_items
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 SCORES_TABLE = os.environ["SCORES_TABLE"]
 MATCHES_TABLE = os.environ["MATCHES_TABLE"]
 ALBUM_MATCHES_TABLE = os.environ["ALBUM_MATCHES_TABLE"]
+GLOBAL_STATISTICS_TABLE = os.environ["GLOBAL_STATISTICS_TABLE"]
 
 NAMES_PATH = f"s3://{DATA_BUCKET}/{NAMES_CONSOLIDATED_KEY}"
 RESULTS_PATH = f"s3://{DATA_BUCKET}/{RESULTS_CONSOLIDATED_KEY}"
 SCORES_PATH = f"s3://{DATA_BUCKET}/{ENRICHED_SCORES_KEY}"
+STATISTICS_PATH = f"s3://{DATA_BUCKET}/{GLOBAL_STATISTICS_KEY}"
 
 logger = get_logger(name="dynamodb-writer", domain=Domain.SCORING_PIPELINE)
 dynamodb = boto3.resource("dynamodb")
@@ -83,6 +86,12 @@ def _write_matches(
                 )
 
 
+def _write_statistics(table, stats_df):
+    with table.batch_writer() as batch:
+        for item in statistics_items(stats_df.iloc[0]):
+            batch.put_item(Item=item)
+
+
 def handler(event, _context):
     logger.info("handler started")
     try:
@@ -138,6 +147,11 @@ def handler(event, _context):
             scores_lookup,
         )
         logger.info("matches written", extra={"count": len(affected_results)})
+
+        logger.info("writing global statistics to dynamodb")
+        stats_df = wr.s3.read_parquet(STATISTICS_PATH)
+        _write_statistics(dynamodb.Table(GLOBAL_STATISTICS_TABLE), stats_df)
+        logger.info("global statistics written")
 
         logger.info(
             "sync complete",

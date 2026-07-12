@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 import pandas as pd
-from toa.columns import ScoresCol
+from toa.columns import ScoresCol, StatisticsCol
 
 
 def to_decimal(value):
@@ -29,6 +29,32 @@ def score_item(row, name):
         "album": name.get("album", ""),
         "short-name": name.get("short-name", ""),
     }
+
+
+def statistics_items(row):
+    return [
+        {
+            "key": StatisticsCol.EARLIEST_MATCH,
+            "value": row[StatisticsCol.EARLIEST_MATCH],
+        },
+        {"key": StatisticsCol.LATEST_MATCH, "value": row[StatisticsCol.LATEST_MATCH]},
+        {
+            "key": StatisticsCol.MIN_SCORE,
+            "value": to_decimal(row[StatisticsCol.MIN_SCORE]),
+        },
+        {
+            "key": StatisticsCol.MAX_SCORE,
+            "value": to_decimal(row[StatisticsCol.MAX_SCORE]),
+        },
+        {
+            "key": StatisticsCol.NUM_ALBUMS,
+            "value": to_decimal(row[StatisticsCol.NUM_ALBUMS]),
+        },
+        {
+            "key": StatisticsCol.NUM_MATCHES,
+            "value": to_decimal(row[StatisticsCol.NUM_MATCHES]),
+        },
+    ]
 
 
 def ranking_entry(i, album_id, date, names, scores_lookup):

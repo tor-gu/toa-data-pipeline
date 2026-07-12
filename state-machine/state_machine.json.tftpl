@@ -113,6 +113,31 @@
           "Next": "FinalizeFailure"
         }
       ],
+      "Next": "BuildStatistics"
+    },
+    "BuildStatistics": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${statistics_builder_arn}",
+        "Payload": {}
+      },
+      "ResultPath": "$.statisticsOutput",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 10,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FinalizeFailure"
+        }
+      ],
       "Next": "SyncDynamoDB"
     },
     "SyncDynamoDB": {
