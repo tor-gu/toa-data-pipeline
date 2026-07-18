@@ -1,13 +1,18 @@
 from decimal import Decimal
 
 import pandas as pd
-from toa.columns import ScoresCol, StatisticsCol
+from toa.columns import ScoresCol, StatisticsCol, VizCol
 from transform import (
+    VIZ_PK,
     build_scores_lookup,
     ranking_entry,
     score_item,
+    stale_viz_keys,
     statistics_items,
     to_decimal,
+    viz_album_item,
+    viz_dates_item,
+    viz_match_item,
 )
 
 # ── to_decimal ──────────────────────────────────────────────────────────────
@@ -155,3 +160,81 @@ def test_statistics_items_shape_and_values():
     assert by_key[StatisticsCol.NUM_ALBUMS] == Decimal("42")
     assert by_key[StatisticsCol.NUM_MATCHES] == Decimal("100")
     assert len(items) == 6
+
+
+# ── viz items ────────────────────────────────────────────────────────────────
+
+
+def test_viz_dates_item_shape():
+    item = viz_dates_item(["2024-01-01", "2024-01-02"], 3, 5)
+    assert item == {
+        "pk": VIZ_PK,
+        "sk": "DATES",
+        "dates": ["2024-01-01", "2024-01-02"],
+        "num_dates": 2,
+        "num_albums": 3,
+        "num_matches": 5,
+    }
+
+
+def test_viz_album_item_decimal_scores_and_sk():
+    row = pd.Series(
+        {
+            VizCol.ID: "abc123",
+            VizCol.DEBUT: 1,
+            VizCol.SCORES: [0.0, 0.1235],
+            VizCol.MATCH_IDS: ["m1", "m2"],
+        }
+    )
+    item = viz_album_item(
+        row, {"artist": "Artist", "album": "Album", "short-name": "Short"}
+    )
+    assert item["pk"] == VIZ_PK
+    assert item["sk"] == "ALBUM#abc123"
+    assert item["debut"] == 1
+    assert item["scores"] == [Decimal("0.0"), Decimal("0.1235")]
+    assert item["match_ids"] == ["m1", "m2"]
+    assert item["artist"] == "Artist"
+
+
+def test_viz_album_item_missing_name_defaults_to_empty_strings():
+    row = pd.Series(
+        {
+            VizCol.ID: "abc123",
+            VizCol.DEBUT: 0,
+            VizCol.SCORES: [0.5],
+            VizCol.MATCH_IDS: ["m1"],
+        }
+    )
+    item = viz_album_item(row, {})
+    assert item["artist"] == ""
+    assert item["album"] == ""
+    assert item["short-name"] == ""
+
+
+def test_viz_match_item_sk_sorts_chronologically():
+    row = pd.Series(
+        {
+            VizCol.MATCH_ID: "m1",
+            VizCol.DATE: "2024-01-01",
+            VizCol.ORDER: ["a", "b", "c"],
+        }
+    )
+    item = viz_match_item(row)
+    assert item == {
+        "pk": VIZ_PK,
+        "sk": "MATCH#2024-01-01#m1",
+        "match_id": "m1",
+        "date": "2024-01-01",
+        "ranking": ["a", "b", "c"],
+    }
+
+
+def test_stale_viz_keys_diff():
+    existing = ["DATES", "ALBUM#a", "ALBUM#b", "MATCH#2024-01-01#m1"]
+    new = ["DATES", "ALBUM#a", "MATCH#2024-01-01#m1"]
+    assert stale_viz_keys(existing, new) == ["ALBUM#b"]
+
+
+def test_stale_viz_keys_empty_when_no_change():
+    assert stale_viz_keys(["DATES"], ["DATES"]) == []

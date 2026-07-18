@@ -2,26 +2,45 @@ import os
 
 import awswrangler as wr
 import boto3
-from toa.columns import NamesCol, ResultsCol, ScoresCol
+from boto3.dynamodb.conditions import Key
+from toa.columns import NamesCol, ResultsCol, ScoresCol, VizCol
+from toa.dynamodb import query_all
 from toa.logging import Domain, get_logger
 from toa.paths import (
     ENRICHED_SCORES_KEY,
     GLOBAL_STATISTICS_KEY,
     NAMES_CONSOLIDATED_KEY,
     RESULTS_CONSOLIDATED_KEY,
+    VIZ_ALBUMS_KEY,
+    VIZ_DATES_KEY,
+    VIZ_MATCHES_KEY,
 )
-from transform import build_scores_lookup, ranking_entry, score_item, statistics_items
+from transform import (
+    VIZ_PK,
+    build_scores_lookup,
+    ranking_entry,
+    score_item,
+    stale_viz_keys,
+    statistics_items,
+    viz_album_item,
+    viz_dates_item,
+    viz_match_item,
+)
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 SCORES_TABLE = os.environ["SCORES_TABLE"]
 MATCHES_TABLE = os.environ["MATCHES_TABLE"]
 ALBUM_MATCHES_TABLE = os.environ["ALBUM_MATCHES_TABLE"]
 GLOBAL_STATISTICS_TABLE = os.environ["GLOBAL_STATISTICS_TABLE"]
+VIZ_TABLE = os.environ["VIZ_TABLE"]
 
 NAMES_PATH = f"s3://{DATA_BUCKET}/{NAMES_CONSOLIDATED_KEY}"
 RESULTS_PATH = f"s3://{DATA_BUCKET}/{RESULTS_CONSOLIDATED_KEY}"
 SCORES_PATH = f"s3://{DATA_BUCKET}/{ENRICHED_SCORES_KEY}"
 STATISTICS_PATH = f"s3://{DATA_BUCKET}/{GLOBAL_STATISTICS_KEY}"
+VIZ_DATES_PATH = f"s3://{DATA_BUCKET}/{VIZ_DATES_KEY}"
+VIZ_ALBUMS_PATH = f"s3://{DATA_BUCKET}/{VIZ_ALBUMS_KEY}"
+VIZ_MATCHES_PATH = f"s3://{DATA_BUCKET}/{VIZ_MATCHES_KEY}"
 
 logger = get_logger(name="dynamodb-writer", domain=Domain.SCORING_PIPELINE)
 dynamodb = boto3.resource("dynamodb")
@@ -84,6 +103,36 @@ def _write_matches(
                         "short-name": names.get(album_id, {}).get("short-name", ""),
                     }
                 )
+
+
+# The viz dataset is always fully rewritten (never earliest_date-filtered):
+# a new date lengthens every album's score vector, and the identity of the
+# largest component can change between runs.
+def _write_viz(table, dates_df, albums_df, matches_df, names):
+    dates = list(dates_df[VizCol.DATE])
+    items = [viz_dates_item(dates, len(albums_df), len(matches_df))]
+    for _, row in albums_df.iterrows():
+        items.append(viz_album_item(row, names.get(row[VizCol.ID], {})))
+    for _, row in matches_df.iterrows():
+        items.append(viz_match_item(row))
+
+    existing = query_all(
+        table,
+        KeyConditionExpression=Key("pk").eq(VIZ_PK),
+        ProjectionExpression="sk",
+    )
+    stale = stale_viz_keys(
+        (item["sk"] for item in existing), (item["sk"] for item in items)
+    )
+
+    # Write before deleting so concurrent readers never see an empty partition.
+    with table.batch_writer() as batch:
+        for item in items:
+            batch.put_item(Item=item)
+        for sk in stale:
+            batch.delete_item(Key={"pk": VIZ_PK, "sk": sk})
+
+    return len(items), len(stale)
 
 
 def _write_statistics(table, stats_df):
@@ -153,8 +202,21 @@ def handler(event, _context):
         _write_statistics(dynamodb.Table(GLOBAL_STATISTICS_TABLE), stats_df)
         logger.info("global statistics written")
 
+        logger.info("writing viz data to dynamodb")
+        viz_written, viz_deleted = _write_viz(
+            dynamodb.Table(VIZ_TABLE),
+            wr.s3.read_parquet(VIZ_DATES_PATH),
+            wr.s3.read_parquet(VIZ_ALBUMS_PATH),
+            wr.s3.read_parquet(VIZ_MATCHES_PATH),
+            names,
+        )
         logger.info(
-            "sync complete",
+            "viz data written",
+            extra={"items_written": viz_written, "stale_deleted": viz_deleted},
+        )
+
+        logger.info(
+            "update complete",
             extra={
                 "scores_written": len(affected_scores),
                 "matches_written": len(affected_results),

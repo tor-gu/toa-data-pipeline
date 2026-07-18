@@ -113,22 +113,55 @@
           "Next": "FinalizeFailure"
         }
       ],
-      "Next": "BuildStatistics"
+      "Next": "BuildStatisticsAndViz"
     },
-    "BuildStatistics": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "${statistics_builder_arn}",
-        "Payload": {}
-      },
-      "ResultPath": "$.statisticsOutput",
-      "Retry": [
+    "BuildStatisticsAndViz": {
+      "Type": "Parallel",
+      "ResultPath": "$.parallelOutput",
+      "Branches": [
         {
-          "ErrorEquals": ["Lambda.TooManyRequestsException"],
-          "IntervalSeconds": 5,
-          "MaxAttempts": 10,
-          "BackoffRate": 2
+          "StartAt": "BuildStatistics",
+          "States": {
+            "BuildStatistics": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${statistics_builder_arn}",
+                "Payload": {}
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.TooManyRequestsException"],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 10,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "BuildViz",
+          "States": {
+            "BuildViz": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${viz_builder_arn}",
+                "Payload": {}
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.TooManyRequestsException"],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 10,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
         }
       ],
       "Catch": [
