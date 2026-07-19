@@ -10,6 +10,7 @@ from transform import (
     stale_viz_keys,
     statistics_items,
     to_decimal,
+    to_optional_decimal,
     viz_album_item,
     viz_dates_item,
     viz_match_item,
@@ -22,12 +23,25 @@ def test_to_decimal_numeric():
     assert to_decimal(1.5) == Decimal("1.5")
 
 
-def test_to_decimal_nan():
-    assert to_decimal(float("nan")) is None
+def test_to_decimal_nan_is_not_nulled():
+    # Required fields must not silently become null: NaN survives as a Decimal
+    # and is rejected by boto3 at write time.
+    assert to_decimal(float("nan")).is_nan()
 
 
-def test_to_decimal_none():
-    assert to_decimal(None) is None
+# ── to_optional_decimal ──────────────────────────────────────────────────────
+
+
+def test_to_optional_decimal_numeric():
+    assert to_optional_decimal(1.5) == Decimal("1.5")
+
+
+def test_to_optional_decimal_nan():
+    assert to_optional_decimal(float("nan")) is None
+
+
+def test_to_optional_decimal_none():
+    assert to_optional_decimal(None) is None
 
 
 # ── build_scores_lookup ──────────────────────────────────────────────────────
