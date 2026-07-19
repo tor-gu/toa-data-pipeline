@@ -1,0 +1,18 @@
+# scores-enricher
+
+Reads `scores/scores.parquet` and writes `scores/enriched_scores.parquet` with three
+added columns. The raw scores file is left untouched.
+
+## Added columns
+
+| Column | Notes |
+|---|---|
+| `rank` | position within the date, best first |
+| `is_new` | true on the first date the album was scored |
+| `score_delta` | change since the album's previous scored date; null when `is_new` |
+
+Consecutive scores within `TIE_TOLERANCE` of each other are treated as tied and share
+the average of the positions they span, so ranks can be fractional — two albums tied
+at the top are both rank 1.5.
+
+The whole history is recomputed every run. 
