@@ -36,3 +36,10 @@ See [state-machine](state-machine/) for the full flow, including the error paths
 - **[dynamodb-writer](dynamodb-writer/)** — writes the Parquet outputs to the DynamoDB tables.
 - **[pipeline-finalizer](pipeline-finalizer/)** — terminal step; logs success or failure.
 
+## Related projects
+
+These live in their own repositories.
+
+- [toa-lambda-layer-common](https://github.com/tor-gu/toa-lambda-layer-common) — shared layer attached to every Lambda here: logging, column names, S3 paths.
+- [toa-lambda-score](https://github.com/tor-gu/toa-lambda-score) — computes the album scores, invoked by scores-updater once per date being scored.
+
