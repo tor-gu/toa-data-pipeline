@@ -22,6 +22,8 @@ flowchart TD
     D --> F[pipeline-finalizer]
 ```
 
+See [state-machine](state-machine/) for the full flow, including the error paths.
+
 ## Lambdas
 
 - **results-watcher** — S3 trigger; starts the state machine on a new upload.
