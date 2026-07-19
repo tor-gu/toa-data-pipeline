@@ -1,6 +1,6 @@
 # state-machine
 
-The Step Functions definition that drives the pipeline. The `state_machine.json.tftpl` file is a terraform template.
+This is the AWS Step Functions state machine definition that drives the pipeline. The `state_machine.json.tftpl` file is a terraform template.
 
 ## Flow
 

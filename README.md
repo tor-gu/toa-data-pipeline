@@ -29,7 +29,7 @@ See [state-machine](state-machine/) for the full flow, including the error paths
 - **[results-watcher](results-watcher/)** — S3 trigger; starts the state machine on a new upload.
 - **[names-consolidator](names-consolidator/)** — rebuilds `names/consolidated/names.parquet`, auto-generating short names.
 - **[results-consolidator](results-consolidator/)** — merges new result JSONs into `results.parquet`; short-circuits to the finalizer if nothing new.
-- **scores-updater** — generates scores for each unscored date.
+- **[scores-updater](scores-updater/)** — generates scores for each unscored date.
 - **[scores-enricher](scores-enricher/)** — adds `rank` / `is_new` / `score_delta` columns.
 - **statistics-builder** — computes global summary statistics.
 - **viz-builder** — builds the score-history visualization dataset (largest connected component).
