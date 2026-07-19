@@ -32,7 +32,7 @@ See [state-machine](state-machine/) for the full flow, including the error paths
 - **[scores-updater](scores-updater/)** — generates scores for each unscored date.
 - **[scores-enricher](scores-enricher/)** — adds `rank` / `is_new` / `score_delta` columns.
 - **[statistics-builder](statistics-builder/)** — computes global summary statistics.
-- **viz-builder** — builds the score-history visualization dataset (largest connected component).
+- **[viz-builder](viz-builder/)** — builds the score-history visualization dataset (largest connected component).
 - **[dynamodb-writer](dynamodb-writer/)** — writes the Parquet outputs to the DynamoDB tables.
 - **[pipeline-finalizer](pipeline-finalizer/)** — terminal step; logs success or failure.
 
