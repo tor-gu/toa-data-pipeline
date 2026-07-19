@@ -45,7 +45,7 @@ either fails the execution directly.
 
 ## Simultaneous uploads
 
-The normal use case is that results are uploaded one -- or perhaps a few -- at a time. A large burst of results might be uploaded in a test environment, or when reloading all the data from scratch (for some reason).  This section describes what happens when multiple results are uploaded simultaneously.
+The normal use case is that results are uploaded one -- or perhaps a few -- at a time. A large burst of results might be uploaded in a test environment, or when reloading all the data from scratch (for some reason).  This section describes what happens when multiple results are uploaded simultaneously, or nearly so.
 
 **Each upload triggers a run of the state machine**. There are two mechanisms to keep that safe.
 
@@ -54,7 +54,7 @@ pipeline-finalizer is capped at `reserved_concurrent_executions = 1`. A second
 concurrent invocation is throttled with `Lambda.TooManyRequestsException` — which triggers a retry. So, overlapping executions serialize a step at a time.
 
 **Short-circuiting.** results-consolidator takes everything in
-`results/unprocessed/`, not just the file that triggered it, so the executions behind it find nothing, return `files_processed: 0`, and jump to the finalizer.
+`results/unprocessed/`, not just the file that triggered it. Executions behind it find nothing, return `files_processed: 0`, and jump to the finalizer.
 
 As long as every execution succeeds (eventually), the end state is correct. 
 
