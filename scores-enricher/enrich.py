@@ -13,7 +13,10 @@ def _assign_ranks(scores_desc: list[float], tolerance: float) -> list[float]:
     i = 0
     while i < len(scores_desc):
         j = i + 1
-        while j < len(scores_desc) and abs(scores_desc[j] - scores_desc[j - 1]) <= tolerance:
+        while (
+            j < len(scores_desc)
+            and abs(scores_desc[j] - scores_desc[j - 1]) <= tolerance
+        ):
             j += 1
         group_size = j - i
         avg_rank = (i + 1) + (group_size - 1) / 2
@@ -30,7 +33,9 @@ def add_ranks(df: pd.DataFrame, tolerance: float) -> pd.DataFrame:
     groups = []
     for _, group in df.groupby(ScoresCol.DATE):
         group = group.sort_values(ScoresCol.SCORE, ascending=False).copy()
-        group[ScoresCol.RANK] = _assign_ranks(group[ScoresCol.SCORE].tolist(), tolerance)
+        group[ScoresCol.RANK] = _assign_ranks(
+            group[ScoresCol.SCORE].tolist(), tolerance
+        )
         groups.append(group)
     return pd.concat(groups)
 

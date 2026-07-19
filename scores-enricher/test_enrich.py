@@ -44,14 +44,19 @@ def test_assign_ranks_just_outside_tolerance():
 
 
 def make_scores_df(rows):
-    return pd.DataFrame(rows, columns=[ScoresCol.ID, ScoresCol.SCORE, ScoresCol.DATE, ScoresCol.ROBUSTNESS])
+    return pd.DataFrame(
+        rows,
+        columns=[ScoresCol.ID, ScoresCol.SCORE, ScoresCol.DATE, ScoresCol.ROBUSTNESS],
+    )
 
 
 def test_add_ranks_basic():
-    df = make_scores_df([
-        ("a", 2.0, "2024-01-01", 1.0),
-        ("b", 1.0, "2024-01-01", 1.0),
-    ])
+    df = make_scores_df(
+        [
+            ("a", 2.0, "2024-01-01", 1.0),
+            ("b", 1.0, "2024-01-01", 1.0),
+        ]
+    )
     result = add_ranks(df, TOLERANCE)
     ranks = dict(zip(result[ScoresCol.ID], result[ScoresCol.RANK]))
     assert ranks["a"] == 1.0
@@ -59,11 +64,13 @@ def test_add_ranks_basic():
 
 
 def test_add_ranks_tie():
-    df = make_scores_df([
-        ("a", 2.0, "2024-01-01", 1.0),
-        ("b", 2.0, "2024-01-01", 1.0),
-        ("c", 1.0, "2024-01-01", 1.0),
-    ])
+    df = make_scores_df(
+        [
+            ("a", 2.0, "2024-01-01", 1.0),
+            ("b", 2.0, "2024-01-01", 1.0),
+            ("c", 1.0, "2024-01-01", 1.0),
+        ]
+    )
     result = add_ranks(df, TOLERANCE)
     ranks = dict(zip(result[ScoresCol.ID], result[ScoresCol.RANK]))
     assert ranks["a"] == 1.5
@@ -72,12 +79,14 @@ def test_add_ranks_tie():
 
 
 def test_add_ranks_per_date():
-    df = make_scores_df([
-        ("a", 2.0, "2024-01-01", 1.0),
-        ("b", 1.0, "2024-01-01", 1.0),
-        ("a", 1.0, "2024-01-02", 1.0),
-        ("b", 2.0, "2024-01-02", 1.0),
-    ])
+    df = make_scores_df(
+        [
+            ("a", 2.0, "2024-01-01", 1.0),
+            ("b", 1.0, "2024-01-01", 1.0),
+            ("a", 1.0, "2024-01-02", 1.0),
+            ("b", 2.0, "2024-01-02", 1.0),
+        ]
+    )
     result = add_ranks(df, TOLERANCE)
     for _, row in result.iterrows():
         if row[ScoresCol.DATE] == "2024-01-01":
@@ -90,15 +99,20 @@ def test_add_ranks_per_date():
 
 
 def make_history_df(rows):
-    return pd.DataFrame(rows, columns=[ScoresCol.ID, ScoresCol.SCORE, ScoresCol.DATE, ScoresCol.ROBUSTNESS])
+    return pd.DataFrame(
+        rows,
+        columns=[ScoresCol.ID, ScoresCol.SCORE, ScoresCol.DATE, ScoresCol.ROBUSTNESS],
+    )
 
 
 def test_add_is_new_single_album():
-    df = make_history_df([
-        ("a", 1.0, "2024-01-01", 1.0),
-        ("a", 1.5, "2024-01-02", 1.0),
-        ("a", 2.0, "2024-01-03", 1.0),
-    ])
+    df = make_history_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0),
+            ("a", 1.5, "2024-01-02", 1.0),
+            ("a", 2.0, "2024-01-03", 1.0),
+        ]
+    )
     result = add_is_new(df)
     is_new = dict(zip(result[ScoresCol.DATE], result[ScoresCol.IS_NEW]))
     assert is_new["2024-01-01"] is True or is_new["2024-01-01"] == True
@@ -107,11 +121,13 @@ def test_add_is_new_single_album():
 
 
 def test_add_is_new_multiple_albums():
-    df = make_history_df([
-        ("a", 1.0, "2024-01-01", 1.0),
-        ("b", 1.0, "2024-01-02", 1.0),
-        ("a", 1.5, "2024-01-02", 1.0),
-    ])
+    df = make_history_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0),
+            ("b", 1.0, "2024-01-02", 1.0),
+            ("a", 1.5, "2024-01-02", 1.0),
+        ]
+    )
     result = add_is_new(df)
     result = result.set_index([ScoresCol.ID, ScoresCol.DATE])
     assert result.loc[("a", "2024-01-01"), ScoresCol.IS_NEW] == True
@@ -123,15 +139,26 @@ def test_add_is_new_multiple_albums():
 
 
 def make_enriched_df(rows):
-    df = pd.DataFrame(rows, columns=[ScoresCol.ID, ScoresCol.SCORE, ScoresCol.DATE, ScoresCol.ROBUSTNESS, ScoresCol.IS_NEW])
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            ScoresCol.ID,
+            ScoresCol.SCORE,
+            ScoresCol.DATE,
+            ScoresCol.ROBUSTNESS,
+            ScoresCol.IS_NEW,
+        ],
+    )
     return df
 
 
 def test_add_score_delta_null_on_first():
-    df = make_enriched_df([
-        ("a", 1.0, "2024-01-01", 1.0, True),
-        ("a", 1.5, "2024-01-02", 1.0, False),
-    ])
+    df = make_enriched_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0, True),
+            ("a", 1.5, "2024-01-02", 1.0, False),
+        ]
+    )
     result = add_score_delta(df)
     result = result.set_index([ScoresCol.ID, ScoresCol.DATE])
     assert math.isnan(result.loc[("a", "2024-01-01"), ScoresCol.SCORE_DELTA])
@@ -139,11 +166,13 @@ def test_add_score_delta_null_on_first():
 
 
 def test_add_score_delta_three_dates():
-    df = make_enriched_df([
-        ("a", 1.0, "2024-01-01", 1.0, True),
-        ("a", 1.5, "2024-01-02", 1.0, False),
-        ("a", 1.2, "2024-01-03", 1.0, False),
-    ])
+    df = make_enriched_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0, True),
+            ("a", 1.5, "2024-01-02", 1.0, False),
+            ("a", 1.2, "2024-01-03", 1.0, False),
+        ]
+    )
     result = add_score_delta(df)
     result = result.set_index([ScoresCol.ID, ScoresCol.DATE])
     assert math.isnan(result.loc[("a", "2024-01-01"), ScoresCol.SCORE_DELTA])
@@ -152,12 +181,14 @@ def test_add_score_delta_three_dates():
 
 
 def test_add_score_delta_no_cross_album_contamination():
-    df = make_enriched_df([
-        ("a", 1.0, "2024-01-01", 1.0, True),
-        ("b", 5.0, "2024-01-01", 1.0, True),
-        ("a", 1.5, "2024-01-02", 1.0, False),
-        ("b", 5.5, "2024-01-02", 1.0, False),
-    ])
+    df = make_enriched_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0, True),
+            ("b", 5.0, "2024-01-01", 1.0, True),
+            ("a", 1.5, "2024-01-02", 1.0, False),
+            ("b", 5.5, "2024-01-02", 1.0, False),
+        ]
+    )
     result = add_score_delta(df)
     result = result.set_index([ScoresCol.ID, ScoresCol.DATE])
     assert result.loc[("a", "2024-01-02"), ScoresCol.SCORE_DELTA] == pytest.approx(0.5)

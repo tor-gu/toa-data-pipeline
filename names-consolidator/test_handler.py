@@ -1,5 +1,4 @@
 import pytest
-
 from short_name import generate_short_name
 
 MIN = 10

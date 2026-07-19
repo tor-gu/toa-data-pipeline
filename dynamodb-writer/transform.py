@@ -14,16 +14,16 @@ VIZ_PK = "VIZ"
 
 def to_decimal(value):
     """Convert a numeric value to a Decimal. Going via `str` keeps the short
-    repr rather than expanding the full binary float. 
-    
-    Use for required fields. A missing value converts to 
+    repr rather than expanding the full binary float.
+
+    Use for required fields. A missing value converts to
     Decimal("NaN"), which would fail on a DynamoDB write."""
     return Decimal(str(value))
 
 
 def to_optional_decimal(value):
     """Convert a numeric value to a Decimal, mapping missing values to None.
-    
+
     Use for fields that are legit nullable."""
     return None if pd.isna(value) else to_decimal(value)
 
