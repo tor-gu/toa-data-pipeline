@@ -11,15 +11,19 @@ The main point of the pipeline is to apply the scoring algorithm to generate a s
 ```mermaid
 flowchart TD
     U[New result JSON in results/unprocessed/] --> W[results-watcher]
-    W --> N[names-consolidator]
-    N --> R[results-consolidator]
-    R --> S[scores-updater]
-    S --> E[scores-enricher]
-    E --> ST[statistics-builder]
-    E --> V[viz-builder]
-    ST --> D[dynamodb-writer]
-    V --> D
-    D --> F[pipeline-finalizer]
+    W --> N
+
+    subgraph SM["State machine"]
+        N[names-consolidator]
+        N --> R[results-consolidator]
+        R --> S[scores-updater]
+        S --> E[scores-enricher]
+        E --> ST[statistics-builder]
+        E --> V[viz-builder]
+        ST --> D[dynamodb-writer]
+        V --> D
+        D --> F[pipeline-finalizer]
+    end
 ```
 
 See [state-machine](state-machine/) for the full flow, including the error paths.
