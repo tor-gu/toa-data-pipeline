@@ -7,6 +7,20 @@ where the uploaded file doesn't supply one, and writes
 Input files are never moved, so `names/unprocessed/` accumulates and is re-read in
 full on every run — the Parquet is rebuilt from scratch rather than merged into.
 
+## Input
+
+`names/unprocessed/name_dc62a2a7130882a4.json`
+
+```json
+{
+  "id": "dc62a2a7130882a4",
+  "artist": "The Cure",
+  "album": "Disintegration"
+}
+```
+
+A `short-name` field may be included to override the generated one.
+
 ## Output columns
 
 | Column | Notes |
