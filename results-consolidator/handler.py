@@ -34,7 +34,7 @@ def handler(event, context):
 
         if not keys:
             logger.info("no unprocessed files found")
-            return {"files_processed": 0}
+            return {"files_processed": 0, "earliest_date": None}
 
         new_results = []
         for key in keys:

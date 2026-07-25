@@ -6,7 +6,12 @@ This is the AWS Step Functions state machine definition that drives the pipeline
 
 ```mermaid
 flowchart TD
+    Start([Execution starts]) --> Norm{NormalizeInput}
+    Norm -->|rebuild absent| DefaultRebuildFalse
+    Norm -->|rebuild present| ConsolidatePar
+    DefaultRebuildFalse --> ConsolidatePar
     ConsolidatePar --> Check{CheckIfFilesProcessed}
+    Check -->|rebuild = true| UpdateScores
     Check -->|files_processed > 0| UpdateScores
     Check -->|default| FinalizeSuccess
     UpdateScores --> EnrichScores
@@ -46,6 +51,41 @@ state catches for both, so a failure in either branch aborts the pair.
 `FinalizeSuccess` and `FinalizeFailure` have no `Retry` or `Catch`. An error in
 either fails the execution directly.
 
+`ConsolidateNamesAndResults` writes its output to `$.consolidated` rather than `$`, so
+that the execution input — `rebuild` — is still there when the later states need it.
+
+## Execution input
+
+```json
+{ "rebuild": false }
+```
+
+`rebuild` is the only field. It defaults to `false` (`NormalizeInput` /
+`DefaultRebuildFalse`), so an execution started with `{}` behaves exactly like one
+started by results-watcher.
+
+## Rebuild
+
+A rebuild recomputes everything from the consolidated Parquet data, instead of only the
+dates touched by the newly uploaded results. Nothing needs to be sitting in
+`results/unprocessed/` — the input to a rebuild is what has already been consolidated.
+
+Start one by hand:
+
+```bash
+cd toa-terraform/environments/prod   # or test
+aws stepfunctions start-execution \
+  --state-machine-arn "$(terraform output -raw state_machine_arn)" \
+  --input '{"rebuild": true}'
+```
+
+**timeouts.** A rebuild invokes the score Lambda once per scored
+date, and each fit covers every match up to that date, so the work grows roughly
+quadratically with the number of dates.
+
+A measured rebuild took **207s for 66 dates**. Extrapolating quadratically from that
+(~0.048 · n² seconds), `scores-updater`'s `timeout = 600` covers around 110 dates, and
+the Lambda hard ceiling of 900s would cover around 140.
 ## Simultaneous uploads
 
 The normal use case is that results are uploaded one -- or perhaps a few -- at a time. A large burst of results might be uploaded in a test environment, or when reloading all the data from scratch (for some reason).  This section describes what happens when multiple results are uploaded simultaneously, or nearly so.
@@ -67,5 +107,5 @@ If a large number of results are uploaded in rapid succession, it is conceivable
 
 This scenario would involve 10 attempts spanning about 85 minutes. It would be reported as a pipeline FAILURE.
 
-This case could be handled by adding a manual trigger of a full-refresh, but this is not currently implemented. (TODO)
-
+Recovery is a [rebuild](#rebuild) — `--input '{"rebuild": true}'` reprocesses everything
+that has been consolidated.

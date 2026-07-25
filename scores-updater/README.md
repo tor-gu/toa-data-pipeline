@@ -3,6 +3,13 @@
 Rescores every result date from `earliest_date` onward and rewrites
 `scores/scores.parquet`. Existing scores from that date on are discarded first.
 
+## Input
+
+| Field | Notes |
+|---|---|
+| `earliest_date` | first date to rescore |
+| `rebuild` | optional, defaults to `false`. If `true`, `earliest_date` is ignored and all dates are rescored from an empty starting point. See [Rebuild](../state-machine/README.md#rebuild). |
+
 ## Output columns
 
 | Column | Notes |

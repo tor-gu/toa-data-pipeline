@@ -1,3 +1,4 @@
+import json
 import os
 
 import boto3
@@ -15,7 +16,7 @@ def handler(event, context):
     try:
         sfn.start_execution(
             stateMachineArn=STATE_MACHINE_ARN,
-            input="{}",
+            input=json.dumps({"rebuild": False}),
         )
         logger.info("execution started", extra={"state_machine_arn": STATE_MACHINE_ARN})
     except Exception:

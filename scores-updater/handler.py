@@ -7,6 +7,11 @@ import pandas as pd
 from toa.columns import ResultsCol, ScoresCol
 from toa.logging import Domain, get_logger
 from toa.paths import RESULTS_CONSOLIDATED_KEY, SCORES_KEY
+from update import (
+    assemble_updated_scores,
+    select_dates_to_rescore,
+    select_scores_to_keep,
+)
 
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 SCORE_FUNCTION_NAME = os.environ["SCORE_FUNCTION_NAME"]
@@ -48,7 +53,11 @@ def invoke_score_lambda(pairs):
 def handler(event, _context):
     logger.info("handler started")
     try:
-        earliest_date = event["earliest_date"]
+        rebuild = event.get("rebuild", False)
+        earliest_date = None if rebuild else event["earliest_date"]
+
+        if rebuild:
+            logger.info("rebuild mode: rescoring all dates")
 
         consolidated = wr.s3.read_parquet(CONSOLIDATED_PATH)
 
@@ -65,8 +74,8 @@ def handler(event, _context):
             )
 
         result_dates = sorted(consolidated[ResultsCol.DATE].unique())
-        dates_to_process = [d for d in result_dates if d >= earliest_date]
-        scores = scores[scores[ScoresCol.DATE] < earliest_date]
+        dates_to_process = select_dates_to_rescore(result_dates, earliest_date, rebuild)
+        scores_to_keep = select_scores_to_keep(scores, earliest_date, rebuild)
 
         new_rows = []
         for date in dates_to_process:
@@ -84,7 +93,7 @@ def handler(event, _context):
             logger.info("scored date", extra={"date": date, "num_scores": len(scored)})
 
         if new_rows:
-            updated = pd.concat([scores, pd.DataFrame(new_rows)], ignore_index=True)
+            updated = assemble_updated_scores(scores_to_keep, new_rows)
             wr.s3.to_parquet(updated, path=SCORES_PATH)
 
         logger.info(

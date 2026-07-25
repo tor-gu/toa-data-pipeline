@@ -37,6 +37,8 @@ than duplicating it. Originals are moved only after the Parquet write succeeds, 
 interrupted run leaves its inputs in place and reprocessing them is safe.
 
 Returns `{"files_processed": <count>, "earliest_date": <min date of the new results>}`.
-`earliest_date` is returned so that downstream steps know how far back to go when rescoring. (Dates before `earliest_date` do not have to be rescored.)
+`earliest_date` is returned so that downstream steps know how far back to go when rescoring. (Dates before `earliest_date` do not have to be rescored.) When there is nothing to
+process, `earliest_date` is `null` — the key is always present, because the state machine
+binds it into a Lambda payload unconditionally.
 
 The pipeline will use `files_processed: 0` as a signal to short-circuit further processing and jump to the end.

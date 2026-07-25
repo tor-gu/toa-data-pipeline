@@ -1,10 +1,28 @@
 {
   "Comment": "Tournament of Albums results processing pipeline",
-  "StartAt": "ConsolidateNamesAndResults",
+  "StartAt": "NormalizeInput",
   "States": {
+    "NormalizeInput": {
+      "Type": "Choice",
+      "Comment": "rebuild defaults to false, so a manual execution can be started with {}.",
+      "Choices": [
+        {
+          "Variable": "$.rebuild",
+          "IsPresent": true,
+          "Next": "ConsolidateNamesAndResults"
+        }
+      ],
+      "Default": "DefaultRebuildFalse"
+    },
+    "DefaultRebuildFalse": {
+      "Type": "Pass",
+      "Result": false,
+      "ResultPath": "$.rebuild",
+      "Next": "ConsolidateNamesAndResults"
+    },
     "ConsolidateNamesAndResults": {
       "Type": "Parallel",
-      "Comment": "The two consolidators are independent and write disjoint outputs. ResultSelector reshapes the branch array into the object the downstream states expect -- the indices follow the Branches array, so $[0] is names and $[1] is results.",
+      "Comment": "The two consolidators are independent and write disjoint outputs. ResultSelector reshapes the branch array into the object the downstream states expect -- the indices follow the Branches array, so $[0] is names and $[1] is results. ResultPath is $.consolidated rather than $ so that $.rebuild survives into the later states.",
       "Branches": [
         {
           "StartAt": "ConsolidateNames",
@@ -55,7 +73,7 @@
         "consolidateNamesOutput.$": "$[0]",
         "consolidateOutput.$": "$[1]"
       },
-      "ResultPath": "$",
+      "ResultPath": "$.consolidated",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
@@ -67,9 +85,15 @@
     },
     "CheckIfFilesProcessed": {
       "Type": "Choice",
+      "Comment": "A rebuild never short-circuits -- it reprocesses everything already consolidated, so it does not need new files.",
       "Choices": [
         {
-          "Variable": "$.consolidateOutput.Payload.files_processed",
+          "Variable": "$.rebuild",
+          "BooleanEquals": true,
+          "Next": "UpdateScores"
+        },
+        {
+          "Variable": "$.consolidated.consolidateOutput.Payload.files_processed",
           "NumericGreaterThan": 0,
           "Next": "UpdateScores"
         }
@@ -82,7 +106,8 @@
       "Parameters": {
         "FunctionName": "${scores_updater_arn}",
         "Payload": {
-          "earliest_date.$": "$.consolidateOutput.Payload.earliest_date"
+          "earliest_date.$": "$.consolidated.consolidateOutput.Payload.earliest_date",
+          "rebuild.$": "$.rebuild"
         }
       },
       "ResultPath": "$.scoresOutput",
@@ -192,7 +217,8 @@
       "Parameters": {
         "FunctionName": "${dynamodb_writer_arn}",
         "Payload": {
-          "earliest_date.$": "$.consolidateOutput.Payload.earliest_date"
+          "earliest_date.$": "$.consolidated.consolidateOutput.Payload.earliest_date",
+          "rebuild.$": "$.rebuild"
         }
       },
       "Retry": [
