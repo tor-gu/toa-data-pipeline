@@ -6,12 +6,16 @@ This is the AWS Step Functions state machine definition that drives the pipeline
 
 ```mermaid
 flowchart TD
-    ConsolidateNames --> ConsolidateResults
-    ConsolidateResults --> Check{CheckIfFilesProcessed}
+    ConsolidatePar --> Check{CheckIfFilesProcessed}
     Check -->|files_processed > 0| UpdateScores
     Check -->|default| FinalizeSuccess
     UpdateScores --> EnrichScores
     EnrichScores --> Par
+
+    subgraph ConsolidatePar["ConsolidateNamesAndResults (Parallel)"]
+        ConsolidateNames
+        ConsolidateResults
+    end
 
     subgraph Par["BuildStatisticsAndViz (Parallel)"]
         BuildStatistics
@@ -22,8 +26,7 @@ flowchart TD
     SyncDynamoDB --> FinalizeSuccess
     FinalizeSuccess --> Succeeded([Execution succeeded])
 
-    ConsolidateNames -.->|error| FinalizeFailure
-    ConsolidateResults -.->|error| FinalizeFailure
+    ConsolidatePar -.->|error| FinalizeFailure
     UpdateScores -.->|error| FinalizeFailure
     EnrichScores -.->|error| FinalizeFailure
     Par -.->|error| FinalizeFailure
@@ -37,8 +40,8 @@ Every task retries `Lambda.TooManyRequestsException` — 10 attempts from 5s wit
 backoff rate of 2 — and catches `States.ALL` to `FinalizeFailure`, which logs the
 error and then transitions to a `Fail` state.
 
-The two parallel branches have no `Catch` of their own; the `Parallel` state catches
-for both, so a failure in either aborts the pair.
+Neither `Parallel` state's branches have a `Catch` of their own; the `Parallel`
+state catches for both, so a failure in either branch aborts the pair.
 
 `FinalizeSuccess` and `FinalizeFailure` have no `Retry` or `Catch`. An error in
 either fails the execution directly.

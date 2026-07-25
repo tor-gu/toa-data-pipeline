@@ -12,11 +12,13 @@ The main point of the pipeline is to apply the scoring algorithm to generate a s
 flowchart TD
     U[New result JSON in results/unprocessed/] --> W[results-watcher]
     W --> N
+    W --> R
 
     subgraph SM["State machine"]
         N[names-consolidator]
-        N --> R[results-consolidator]
-        R --> S[scores-updater]
+        R[results-consolidator]
+        N --> S[scores-updater]
+        R --> S
         S --> E[scores-enricher]
         E --> ST[statistics-builder]
         E --> V[viz-builder]

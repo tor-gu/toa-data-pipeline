@@ -1,48 +1,61 @@
 {
   "Comment": "Tournament of Albums results processing pipeline",
-  "StartAt": "ConsolidateNames",
+  "StartAt": "ConsolidateNamesAndResults",
   "States": {
-    "ConsolidateNames": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "${names_consolidator_arn}",
-        "Payload.$": "$"
+    "ConsolidateNamesAndResults": {
+      "Type": "Parallel",
+      "Comment": "The two consolidators are independent and write disjoint outputs. ResultSelector reshapes the branch array into the object the downstream states expect -- the indices follow the Branches array, so $[0] is names and $[1] is results.",
+      "Branches": [
+        {
+          "StartAt": "ConsolidateNames",
+          "States": {
+            "ConsolidateNames": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${names_consolidator_arn}",
+                "Payload": {}
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.TooManyRequestsException"],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 10,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "ConsolidateResults",
+          "States": {
+            "ConsolidateResults": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${consolidator_arn}",
+                "Payload": {}
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.TooManyRequestsException"],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 10,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultSelector": {
+        "consolidateNamesOutput.$": "$[0]",
+        "consolidateOutput.$": "$[1]"
       },
-      "ResultPath": "$.consolidateNamesOutput",
-      "Retry": [
-        {
-          "ErrorEquals": ["Lambda.TooManyRequestsException"],
-          "IntervalSeconds": 5,
-          "MaxAttempts": 10,
-          "BackoffRate": 2
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "ResultPath": "$.error",
-          "Next": "FinalizeFailure"
-        }
-      ],
-      "Next": "ConsolidateResults"
-    },
-    "ConsolidateResults": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "${consolidator_arn}",
-        "Payload.$": "$"
-      },
-      "ResultPath": "$.consolidateOutput",
-      "Retry": [
-        {
-          "ErrorEquals": ["Lambda.TooManyRequestsException"],
-          "IntervalSeconds": 5,
-          "MaxAttempts": 10,
-          "BackoffRate": 2
-        }
-      ],
+      "ResultPath": "$",
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
