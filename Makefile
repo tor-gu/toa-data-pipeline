@@ -1,4 +1,4 @@
-.PHONY: format lint
+.PHONY: format lint test check
 
 format:
 	isort .
@@ -9,3 +9,7 @@ lint:
 	isort --check .
 	flake8 .
 
+test:
+	pytest
+
+check: lint test

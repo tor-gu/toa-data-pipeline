@@ -115,9 +115,9 @@ def test_add_is_new_single_album():
     )
     result = add_is_new(df)
     is_new = dict(zip(result[ScoresCol.DATE], result[ScoresCol.IS_NEW]))
-    assert is_new["2024-01-01"] is True or is_new["2024-01-01"] == True
-    assert is_new["2024-01-02"] == False
-    assert is_new["2024-01-03"] == False
+    assert is_new["2024-01-01"]
+    assert not is_new["2024-01-02"]
+    assert not is_new["2024-01-03"]
 
 
 def test_add_is_new_multiple_albums():
@@ -130,9 +130,9 @@ def test_add_is_new_multiple_albums():
     )
     result = add_is_new(df)
     result = result.set_index([ScoresCol.ID, ScoresCol.DATE])
-    assert result.loc[("a", "2024-01-01"), ScoresCol.IS_NEW] == True
-    assert result.loc[("a", "2024-01-02"), ScoresCol.IS_NEW] == False
-    assert result.loc[("b", "2024-01-02"), ScoresCol.IS_NEW] == True
+    assert result.loc[("a", "2024-01-01"), ScoresCol.IS_NEW]
+    assert not result.loc[("a", "2024-01-02"), ScoresCol.IS_NEW]
+    assert result.loc[("b", "2024-01-02"), ScoresCol.IS_NEW]
 
 
 # ── add_score_delta ────────────────────────────────────────────────────────────

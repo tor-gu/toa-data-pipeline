@@ -42,6 +42,24 @@ See [state-machine](state-machine/) for the full flow, including the error paths
 - **[dynamodb-writer](dynamodb-writer/)** — writes the Parquet outputs to the DynamoDB tables.
 - **[pipeline-finalizer](pipeline-finalizer/)** — terminal step; logs success or failure.
 
+## Development
+
+Tests live in [`tests/`](tests/), one subdirectory per Lambda. Each Lambda directory holds
+only what the function needs at runtime, because Terraform zips it verbatim.
+
+```bash
+make test     # pytest
+make lint     # black --check, isort --check, flake8
+make check    # lint, then test
+make format   # isort, black
+```
+
+Imports are wired in `pyproject.toml` under `[tool.pytest.ini_options] pythonpath` — it
+puts the shared layer and each tested Lambda directory on `sys.path`, so tests import by
+bare module name and no `conftest.py` is needed. Running the tests requires
+[toa-lambda-layer-common](https://github.com/tor-gu/toa-lambda-layer-common) checked out
+alongside this repo.
+
 ## Related projects
 
 These live in their own repositories.
