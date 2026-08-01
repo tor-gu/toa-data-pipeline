@@ -22,7 +22,7 @@ Plus a metadata item: `id="METADATA"`, `date="latest_date"`, `value=<latest date
 | Attribute | Notes |
 |---|---|
 | `match_id`, `date` | |
-| `ranking` | ordered list of `{rank, id, artist, album, short-name, is_new, score_delta}` |
+| `ranking` | ordered list of `{rank, id, artist, album, short-name, new_score, is_new, score_delta}`|
 | `gsi_pk` | constant `"MATCH"` |
 | `date_match_id` | `"<date>#<match_id>"` — GSI sort key for recency queries |
 
