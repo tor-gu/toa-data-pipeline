@@ -66,4 +66,5 @@ These live in their own repositories.
 
 - [toa-lambda-layer-common](https://github.com/tor-gu/toa-lambda-layer-common) — shared layer attached to every Lambda here: logging, column names, S3 paths.
 - [toa-lambda-score](https://github.com/tor-gu/toa-lambda-score) — computes the album scores, invoked by scores-updater once per date being scored.
+- [toa-api](https://github.com/tor-gu/toa-api) — read-only API serving the DynamoDB tables dynamodb-writer populates.
 
