@@ -1,7 +1,12 @@
+import threading
+import time
+
 import pandas as pd
+import pytest
 from toa.columns import ScoresCol
 from update import (
     assemble_updated_scores,
+    score_dates,
     select_dates_to_rescore,
     select_scores_to_keep,
 )
@@ -136,6 +141,125 @@ def test_select_scores_does_not_mutate_input():
     select_scores_to_keep(scores, "2024-02-01", False)
     select_scores_to_keep(scores, None, True)
     assert len(scores) == 2
+
+
+# ── score_dates ────────────────────────────────────────────────────────────────
+
+
+DATE_ORDER = [date for date in DATES for _ in range(2)]
+
+
+def fake_score_one(date):
+    """Two rows per date, stamped with it, as the real per-date fit returns."""
+    return [
+        {ScoresCol.ID: "a", ScoresCol.DATE: date},
+        {ScoresCol.ID: "b", ScoresCol.DATE: date},
+    ]
+
+
+class InFlightCounter:
+    """A fake fit that records the high-water mark of concurrent calls."""
+
+    def __init__(self, delay=0.05):
+        self.delay = delay
+        self.lock = threading.Lock()
+        self.current = 0
+        self.max_seen = 0
+
+    def __call__(self, date):
+        with self.lock:
+            self.current += 1
+            self.max_seen = max(self.max_seen, self.current)
+        time.sleep(self.delay)
+        with self.lock:
+            self.current -= 1
+        return fake_score_one(date)
+
+
+def test_score_dates_serially_returns_rows_in_date_order():
+    rows = score_dates(DATES, fake_score_one, 1)
+    assert [row[ScoresCol.DATE] for row in rows] == DATE_ORDER
+
+
+def test_score_dates_in_parallel_returns_rows_in_date_order():
+    # each date sleeps less than the one before it, so the fits finish in the
+    # reverse of the order they were submitted -- the result must not follow
+    delays = {date: 0.05 * (len(DATES) - i) for i, date in enumerate(DATES)}
+
+    def slow_score_one(date):
+        time.sleep(delays[date])
+        return fake_score_one(date)
+
+    rows = score_dates(DATES, slow_score_one, 4)
+    assert [row[ScoresCol.DATE] for row in rows] == DATE_ORDER
+
+
+def test_score_dates_serially_fits_each_date_once():
+    calls = []
+
+    def record(date):
+        calls.append(date)
+        return []
+
+    score_dates(DATES, record, 1)
+    assert calls == DATES
+
+
+def test_score_dates_in_parallel_fits_each_date_once():
+    calls = []
+    lock = threading.Lock()
+
+    def record(date):
+        with lock:
+            calls.append(date)
+        return []
+
+    score_dates(DATES, record, 4)
+    assert sorted(calls) == DATES
+
+
+def test_score_dates_serially_runs_one_fit_at_a_time():
+    counter = InFlightCounter()
+    score_dates(DATES, counter, 1)
+    assert counter.max_seen == 1
+
+
+def test_score_dates_in_parallel_overlaps_fits():
+    counter = InFlightCounter()
+    score_dates(DATES, counter, 4)
+    assert counter.max_seen > 1
+
+
+def test_score_dates_caps_concurrency_at_num_executors():
+    counter = InFlightCounter()
+    score_dates(DATES, counter, 2)
+    assert counter.max_seen <= 2
+
+
+def test_score_dates_below_one_executor_runs_serially():
+    counter = InFlightCounter()
+    score_dates(DATES, counter, 0)
+    assert counter.max_seen == 1
+
+
+def test_score_dates_with_no_dates():
+    assert score_dates([], fake_score_one, 4) == []
+
+
+def test_score_dates_serially_propagates_failure():
+    def failing(date):
+        raise RuntimeError("Score Lambda error")
+
+    with pytest.raises(RuntimeError):
+        score_dates(DATES, failing, 1)
+
+
+def test_score_dates_in_parallel_propagates_failure():
+    def failing(date):
+        raise RuntimeError("Score Lambda error")
+
+    with pytest.raises(RuntimeError):
+        score_dates(DATES, failing, 4)
 
 
 # ── assemble_updated_scores ────────────────────────────────────────────────────

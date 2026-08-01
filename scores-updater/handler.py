@@ -9,6 +9,7 @@ from toa.logging import Domain, get_logger
 from toa.paths import RESULTS_CONSOLIDATED_KEY, SCORES_KEY
 from update import (
     assemble_updated_scores,
+    score_dates,
     select_dates_to_rescore,
     select_scores_to_keep,
 )
@@ -50,14 +51,35 @@ def invoke_score_lambda(pairs):
     return json.loads(payload["body"])["scores"]
 
 
+def score_date(consolidated, date):
+    """Fit one date over every match up to and including it.
+
+    Reads `consolidated` but never mutates it, so several of these can run at
+    once against the same DataFrame.
+    """
+    subset = consolidated[consolidated[ResultsCol.DATE] <= date]
+    pairs = []
+    for match_id, order in zip(subset[ResultsCol.MATCH_ID], subset[ResultsCol.ORDER]):
+        pairs.extend(expand_pairs(match_id, order))
+
+    scored = invoke_score_lambda(pairs)
+    for row in scored:
+        row[ScoresCol.DATE] = date
+    logger.info("scored date", extra={"date": date, "num_scores": len(scored)})
+    return scored
+
+
 def handler(event, _context):
     logger.info("handler started")
     try:
         rebuild = event.get("rebuild", False)
+        num_executors = event.get("num_executors", 1)
         earliest_date = None if rebuild else event["earliest_date"]
 
         if rebuild:
             logger.info("rebuild mode: rescoring all dates")
+        if num_executors > 1:
+            logger.info("scoring in parallel", extra={"num_executors": num_executors})
 
         consolidated = wr.s3.read_parquet(CONSOLIDATED_PATH)
 
@@ -77,27 +99,22 @@ def handler(event, _context):
         dates_to_process = select_dates_to_rescore(result_dates, earliest_date, rebuild)
         scores_to_keep = select_scores_to_keep(scores, earliest_date, rebuild)
 
-        new_rows = []
-        for date in dates_to_process:
-            subset = consolidated[consolidated[ResultsCol.DATE] <= date]
-            pairs = []
-            for match_id, order in zip(
-                subset[ResultsCol.MATCH_ID], subset[ResultsCol.ORDER]
-            ):
-                pairs.extend(expand_pairs(match_id, order))
-
-            scored = invoke_score_lambda(pairs)
-            for row in scored:
-                row[ScoresCol.DATE] = date
-            new_rows.extend(scored)
-            logger.info("scored date", extra={"date": date, "num_scores": len(scored)})
+        new_rows = score_dates(
+            dates_to_process,
+            lambda date: score_date(consolidated, date),
+            num_executors,
+        )
 
         if new_rows:
             updated = assemble_updated_scores(scores_to_keep, new_rows)
             wr.s3.to_parquet(updated, path=SCORES_PATH)
 
         logger.info(
-            "scoring complete", extra={"dates_processed": len(dates_to_process)}
+            "scoring complete",
+            extra={
+                "dates_processed": len(dates_to_process),
+                "num_executors": num_executors,
+            },
         )
     except Exception:
         logger.exception("handler error")

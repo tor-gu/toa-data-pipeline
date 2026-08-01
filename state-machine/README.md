@@ -8,8 +8,11 @@ This is the AWS Step Functions state machine definition that drives the pipeline
 flowchart TD
     Start([Execution starts]) --> Norm{NormalizeInput}
     Norm -->|rebuild absent| DefaultRebuildFalse
-    Norm -->|rebuild present| ConsolidatePar
-    DefaultRebuildFalse --> ConsolidatePar
+    Norm -->|rebuild present| NormExec
+    DefaultRebuildFalse --> NormExec{NormalizeNumExecutors}
+    NormExec -->|num_executors absent| DefaultNumExecutorsOne
+    NormExec -->|num_executors present| ConsolidatePar
+    DefaultNumExecutorsOne --> ConsolidatePar
     ConsolidatePar --> Check{CheckIfFilesProcessed}
     Check -->|rebuild = true| UpdateScores
     Check -->|files_processed > 0| UpdateScores
@@ -52,17 +55,22 @@ state catches for both, so a failure in either branch aborts the pair.
 either fails the execution directly.
 
 `ConsolidateNamesAndResults` writes its output to `$.consolidated` rather than `$`, so
-that the execution input — `rebuild` — is still there when the later states need it.
+that the execution input — `rebuild` and `num_executors` — is still there when the later
+states need it.
 
 ## Execution input
 
 ```json
-{ "rebuild": false }
+{ "rebuild": false, "num_executors": 1 }
 ```
 
-`rebuild` is the only field. It defaults to `false` (`NormalizeInput` /
-`DefaultRebuildFalse`), so an execution started with `{}` behaves exactly like one
-started by results-watcher.
+Both fields are optional and both are normalized before anything else runs, so an
+execution started with `{}` behaves exactly like one started by results-watcher.
+
+| Field | Default | Set by | Notes |
+|---|---|---|---|
+| `rebuild` | `false` | `NormalizeInput` / `DefaultRebuildFalse` | see [Rebuild](#rebuild) |
+| `num_executors` | `1` | `NormalizeNumExecutors` / `DefaultNumExecutorsOne` | how many score-Lambda invocations scores-updater keeps in flight at once |
 
 ## Rebuild
 
@@ -86,6 +94,20 @@ quadratically with the number of dates.
 A measured rebuild took **207s for 66 dates**. Extrapolating quadratically from that
 (~0.048 · n² seconds), `scores-updater`'s `timeout = 600` covers around 110 dates, and
 the Lambda hard ceiling of 900s would cover around 140.
+
+Those numbers are for the default `num_executors: 1`, where the fits run one at a time.
+The score Lambda is a separate function with no reserved concurrency, so a bigger
+`num_executors` overlaps the fits and cuts the wall clock — sub-linearly, since the
+longest date still has to run start to finish:
+
+```bash
+aws stepfunctions start-execution \
+  --state-machine-arn "$(terraform output -raw state_machine_arn)" \
+  --input '{"rebuild": true, "num_executors": 4}'
+```
+
+See [scores-updater](../scores-updater/README.md) for what to watch when raising it.
+
 ## Simultaneous uploads
 
 The normal use case is that results are uploaded one -- or perhaps a few -- at a time. A large burst of results might be uploaded in a test environment, or when reloading all the data from scratch (for some reason).  This section describes what happens when multiple results are uploaded simultaneously, or nearly so.

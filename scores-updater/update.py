@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
+
 import pandas as pd
 from toa.columns import ScoresCol
 
@@ -28,6 +31,19 @@ def select_scores_to_keep(
     if rebuild:
         return scores.iloc[0:0]
     return scores[scores[ScoresCol.DATE] < earliest_date]
+
+
+def score_dates(
+    dates: list[str], score_one: Callable[[str], list[dict]], num_executors: int
+) -> list[dict]:
+    """The fitted rows for every date, flattened, in `dates` order.
+
+    If num_executors is > 1, the fits will be done in parallel.
+    """
+    if num_executors <= 1:
+        return [row for date in dates for row in score_one(date)]
+    with ThreadPoolExecutor(max_workers=num_executors) as pool:
+        return [row for scored in pool.map(score_one, dates) for row in scored]
 
 
 def assemble_updated_scores(

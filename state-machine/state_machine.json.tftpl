@@ -4,12 +4,12 @@
   "States": {
     "NormalizeInput": {
       "Type": "Choice",
-      "Comment": "rebuild defaults to false, so a manual execution can be started with {}.",
+      "Comment": "rebuild defaults to false, so a manual execution can be started with {}. The two optional fields are normalized in sequence, each defaulting through a Pass before the next is checked.",
       "Choices": [
         {
           "Variable": "$.rebuild",
           "IsPresent": true,
-          "Next": "ConsolidateNamesAndResults"
+          "Next": "NormalizeNumExecutors"
         }
       ],
       "Default": "DefaultRebuildFalse"
@@ -18,11 +18,29 @@
       "Type": "Pass",
       "Result": false,
       "ResultPath": "$.rebuild",
+      "Next": "NormalizeNumExecutors"
+    },
+    "NormalizeNumExecutors": {
+      "Type": "Choice",
+      "Comment": "num_executors defaults to 1, which scores dates one at a time exactly as before it existed.",
+      "Choices": [
+        {
+          "Variable": "$.num_executors",
+          "IsPresent": true,
+          "Next": "ConsolidateNamesAndResults"
+        }
+      ],
+      "Default": "DefaultNumExecutorsOne"
+    },
+    "DefaultNumExecutorsOne": {
+      "Type": "Pass",
+      "Result": 1,
+      "ResultPath": "$.num_executors",
       "Next": "ConsolidateNamesAndResults"
     },
     "ConsolidateNamesAndResults": {
       "Type": "Parallel",
-      "Comment": "The two consolidators are independent and write disjoint outputs. ResultSelector reshapes the branch array into the object the downstream states expect -- the indices follow the Branches array, so $[0] is names and $[1] is results. ResultPath is $.consolidated rather than $ so that $.rebuild survives into the later states.",
+      "Comment": "The two consolidators are independent and write disjoint outputs. ResultSelector reshapes the branch array into the object the downstream states expect -- the indices follow the Branches array, so $[0] is names and $[1] is results. ResultPath is $.consolidated rather than $ so that the execution input -- $.rebuild and $.num_executors -- survives into the later states.",
       "Branches": [
         {
           "StartAt": "ConsolidateNames",
@@ -107,7 +125,8 @@
         "FunctionName": "${scores_updater_arn}",
         "Payload": {
           "earliest_date.$": "$.consolidated.consolidateOutput.Payload.earliest_date",
-          "rebuild.$": "$.rebuild"
+          "rebuild.$": "$.rebuild",
+          "num_executors.$": "$.num_executors"
         }
       },
       "ResultPath": "$.scoresOutput",
