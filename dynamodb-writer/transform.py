@@ -29,10 +29,15 @@ def to_optional_decimal(value):
 
 
 def build_scores_lookup(scores_df):
-    """Index `is_new` and `score_delta` by (album id, date). Covers only the
-    rows present in `scores_df`."""
+    """Index `new_score`, `is_new` and `score_delta` by (album id, date). Covers
+    only the rows present in `scores_df`.
+
+    `new_score` is required here — unlike `score_delta`, which is legitimately
+    absent on an album's first appearance — so it takes the same `to_decimal`
+    treatment `score_item` gives the same column."""
     return {
         (row[ScoresCol.ID], row[ScoresCol.DATE]): {
+            "new_score": to_decimal(row[ScoresCol.SCORE]),
             "is_new": bool(row[ScoresCol.IS_NEW]),
             "score_delta": to_optional_decimal(row[ScoresCol.SCORE_DELTA]),
         }
@@ -130,8 +135,9 @@ def stale_viz_keys(existing_sks, new_sks):
 
 def ranking_entry(i, album_id, date, names, scores_lookup):
     """Build one entry of a match ranking. `i` is the 0-based position and
-    becomes a 1-based rank. `is_new` and `score_delta` are None when
-    (`album_id`, `date`) is absent from `scores_lookup`."""
+    becomes a 1-based rank. `new_score` is the album's score as of `date`;
+    it, `is_new` and `score_delta` are None when (`album_id`, `date`) is absent
+    from `scores_lookup`."""
     name = names.get(album_id, {})
     scores = scores_lookup.get((album_id, date), {})
     return {
@@ -140,6 +146,7 @@ def ranking_entry(i, album_id, date, names, scores_lookup):
         "artist": name.get("artist", ""),
         "album": name.get("album", ""),
         "short-name": name.get("short-name", ""),
+        "new_score": scores.get("new_score"),
         "is_new": scores.get("is_new"),
         "score_delta": scores.get("score_delta"),
     }

@@ -71,9 +71,11 @@ def test_build_scores_lookup_keys_and_types():
     )
     lookup = build_scores_lookup(df)
 
+    assert lookup[("a", "2024-01-01")]["new_score"] == Decimal("1.0")
     assert lookup[("a", "2024-01-01")]["is_new"] is True
     assert lookup[("a", "2024-01-01")]["score_delta"] is None
 
+    assert lookup[("b", "2024-01-01")]["new_score"] == Decimal("0.5")
     assert lookup[("b", "2024-01-01")]["is_new"] is False
     assert lookup[("b", "2024-01-01")]["score_delta"] == Decimal("-0.3")
 
@@ -82,6 +84,17 @@ def test_build_scores_lookup_is_new_is_native_bool():
     df = make_scores_df([("a", 1.0, "2024-01-01", 1.0, 1.0, True, float("nan"))])
     lookup = build_scores_lookup(df)
     assert type(lookup[("a", "2024-01-01")]["is_new"]) is bool
+
+
+def test_build_scores_lookup_new_score_keeps_short_repr():
+    # to_decimal goes via str precisely so the stored number stays readable:
+    # Decimal(0.3) would expand to the full binary float, Decimal(str(0.3)) does
+    # not. DynamoDB would reject the 54-digit expansion as out of range.
+    df = make_scores_df([("a", 0.3, "2024-01-01", 1.0, 1.0, False, 0.1)])
+    lookup = build_scores_lookup(df)
+    new_score = lookup[("a", "2024-01-01")]["new_score"]
+    assert type(new_score) is Decimal
+    assert str(new_score) == "0.3"
 
 
 # ── score_item ────────────────────────────────────────────────────────────────
@@ -123,10 +136,14 @@ def test_score_item_missing_name_defaults_to_empty_strings():
 # ── ranking_entry ────────────────────────────────────────────────────────────
 
 
-def test_ranking_entry_includes_is_new_and_score_delta():
+def test_ranking_entry_includes_new_score_is_new_and_score_delta():
     names = {"a": {"artist": "Artist", "album": "Album", "short-name": "Short"}}
     scores_lookup = {
-        ("a", "2024-01-01"): {"is_new": False, "score_delta": Decimal("0.2")}
+        ("a", "2024-01-01"): {
+            "new_score": Decimal("1.4"),
+            "is_new": False,
+            "score_delta": Decimal("0.2"),
+        }
     }
 
     entry = ranking_entry(0, "a", "2024-01-01", names, scores_lookup)
@@ -137,6 +154,7 @@ def test_ranking_entry_includes_is_new_and_score_delta():
         "artist": "Artist",
         "album": "Album",
         "short-name": "Short",
+        "new_score": Decimal("1.4"),
         "is_new": False,
         "score_delta": Decimal("0.2"),
     }
@@ -145,6 +163,7 @@ def test_ranking_entry_includes_is_new_and_score_delta():
 def test_ranking_entry_missing_score_defaults_to_none():
     entry = ranking_entry(2, "z", "2024-01-01", {}, {})
     assert entry["rank"] == 3
+    assert entry["new_score"] is None
     assert entry["is_new"] is None
     assert entry["score_delta"] is None
 
