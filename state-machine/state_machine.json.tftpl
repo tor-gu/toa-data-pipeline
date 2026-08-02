@@ -1,41 +1,35 @@
 {
   "Comment": "Tournament of Albums results processing pipeline",
-  "StartAt": "NormalizeInput",
+  "StartAt": "InitializePipeline",
   "States": {
-    "NormalizeInput": {
-      "Type": "Choice",
-      "Comment": "rebuild defaults to false, so a manual execution can be started with {}. The two optional fields are normalized in sequence, each defaulting through a Pass before the next is checked.",
-      "Choices": [
+    "InitializePipeline": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Comment": "Normalizes the execution input -- rebuild defaults to false and num_executors to 1, so a manual execution can be started with {}, and invalid values are rejected rather than passed on. ResultSelector strips the Lambda invoke envelope; ResultPath is $ so the normalized object replaces the raw input, which is what makes every later reference to $.rebuild and $.num_executors safe.",
+      "Parameters": {
+        "FunctionName": "${pipeline_initializer_arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "rebuild.$": "$.Payload.rebuild",
+        "num_executors.$": "$.Payload.num_executors"
+      },
+      "ResultPath": "$",
+      "Retry": [
         {
-          "Variable": "$.rebuild",
-          "IsPresent": true,
-          "Next": "NormalizeNumExecutors"
+          "ErrorEquals": ["Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 10,
+          "BackoffRate": 2
         }
       ],
-      "Default": "DefaultRebuildFalse"
-    },
-    "DefaultRebuildFalse": {
-      "Type": "Pass",
-      "Result": false,
-      "ResultPath": "$.rebuild",
-      "Next": "NormalizeNumExecutors"
-    },
-    "NormalizeNumExecutors": {
-      "Type": "Choice",
-      "Comment": "num_executors defaults to 1, which scores dates one at a time exactly as before it existed.",
-      "Choices": [
+      "Catch": [
         {
-          "Variable": "$.num_executors",
-          "IsPresent": true,
-          "Next": "ConsolidateNamesAndResults"
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FinalizeFailure"
         }
       ],
-      "Default": "DefaultNumExecutorsOne"
-    },
-    "DefaultNumExecutorsOne": {
-      "Type": "Pass",
-      "Result": 1,
-      "ResultPath": "$.num_executors",
       "Next": "ConsolidateNamesAndResults"
     },
     "ConsolidateNamesAndResults": {

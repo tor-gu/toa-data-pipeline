@@ -11,10 +11,12 @@ The main point of the pipeline is to apply the scoring algorithm to generate a s
 ```mermaid
 flowchart TD
     U[New result JSON in results/unprocessed/] --> W[results-watcher]
-    W --> N
-    W --> R
+    W --> I
 
     subgraph SM["State machine"]
+        I[pipeline-initializer]
+        I --> N
+        I --> R
         N[names-consolidator]
         R[results-consolidator]
         N --> S[scores-updater]
@@ -33,6 +35,7 @@ See [state-machine](state-machine/) for the full flow, including the error paths
 ## Lambdas
 
 - **[results-watcher](results-watcher/)** — S3 trigger; starts the state machine on a new upload.
+- **[pipeline-initializer](pipeline-initializer/)** — first state-machine step; validates and normalizes input.
 - **[names-consolidator](names-consolidator/)** — rebuilds `names/consolidated/names.parquet`, auto-generating short names.
 - **[results-consolidator](results-consolidator/)** — merges new result JSONs into `results.parquet`; short-circuits to the finalizer if nothing new.
 - **[scores-updater](scores-updater/)** — generates scores for each unscored date.

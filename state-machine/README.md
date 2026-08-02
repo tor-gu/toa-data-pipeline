@@ -6,13 +6,8 @@ This is the AWS Step Functions state machine definition that drives the pipeline
 
 ```mermaid
 flowchart TD
-    Start([Execution starts]) --> Norm{NormalizeInput}
-    Norm -->|rebuild absent| DefaultRebuildFalse
-    Norm -->|rebuild present| NormExec
-    DefaultRebuildFalse --> NormExec{NormalizeNumExecutors}
-    NormExec -->|num_executors absent| DefaultNumExecutorsOne
-    NormExec -->|num_executors present| ConsolidatePar
-    DefaultNumExecutorsOne --> ConsolidatePar
+    Start([Execution starts]) --> Init[InitializePipeline]
+    Init --> ConsolidatePar
     ConsolidatePar --> Check{CheckIfFilesProcessed}
     Check -->|rebuild = true| UpdateScores
     Check -->|files_processed > 0| UpdateScores
@@ -34,6 +29,7 @@ flowchart TD
     SyncDynamoDB --> FinalizeSuccess
     FinalizeSuccess --> Succeeded([Execution succeeded])
 
+    Init -.->|error| FinalizeFailure
     ConsolidatePar -.->|error| FinalizeFailure
     UpdateScores -.->|error| FinalizeFailure
     EnrichScores -.->|error| FinalizeFailure
@@ -54,8 +50,12 @@ state catches for both, so a failure in either branch aborts the pair.
 `FinalizeSuccess` and `FinalizeFailure` have no `Retry` or `Catch`. An error in
 either fails the execution directly.
 
+`InitializePipeline` writes its output to `$`, replacing the raw execution input with the
+normalized one. Every later reference to `$.rebuild` and `$.num_executors` reads what that
+state produced.
+
 `ConsolidateNamesAndResults` writes its output to `$.consolidated` rather than `$`, so
-that the execution input — `rebuild` and `num_executors` — is still there when the later
+that the normalized input — `rebuild` and `num_executors` — is still there when the later
 states need it.
 
 ## Execution input
@@ -64,13 +64,22 @@ states need it.
 { "rebuild": false, "num_executors": 1 }
 ```
 
-Both fields are optional and both are normalized before anything else runs, so an
+Both fields are optional and both are normalized by
+[pipeline-initializer](../pipeline-initializer/) before anything else runs, so an
 execution started with `{}` behaves exactly like one started by results-watcher.
 
-| Field | Default | Set by | Notes |
-|---|---|---|---|
-| `rebuild` | `false` | `NormalizeInput` / `DefaultRebuildFalse` | see [Rebuild](#rebuild) |
-| `num_executors` | `1` | `NormalizeNumExecutors` / `DefaultNumExecutorsOne` | how many score-Lambda invocations scores-updater keeps in flight at once |
+| Field | Default | Notes |
+|---|---|---|
+| `rebuild` | `false` | must be a boolean; see [Rebuild](#rebuild) |
+| `num_executors` | `1` | must be an integer ≥ 1; how many score-Lambda invocations scores-updater keeps in flight at once |
+
+Values are validated, not coerced — `{"rebuild": "yes"}` and `{"num_executors": 0}` fail
+the execution through `FinalizeFailure` instead of running with a silently wrong setting.
+Unknown fields are dropped, since the state replaces `$` outright.
+
+The one input the initializer cannot report cleanly is a non-object: an execution started
+with a bare string or array fails with `States.ResultPathMatchFailure`, because the
+`Catch` has nothing to merge `$.error` into. No real caller does this.
 
 ## Rebuild
 
@@ -114,8 +123,9 @@ The normal use case is that results are uploaded one -- or perhaps a few -- at a
 
 **Each upload triggers a run of the state machine**. There are two mechanisms to keep that safe.
 
-**Concurrency limiting.** Every pipeline Lambda except results-watcher and
-pipeline-finalizer is capped at `reserved_concurrent_executions = 1`. A second
+**Concurrency limiting.** Every pipeline Lambda except results-watcher,
+pipeline-initializer and pipeline-finalizer is capped at
+`reserved_concurrent_executions = 1`. A second
 concurrent invocation is throttled with `Lambda.TooManyRequestsException` — which triggers a retry. So, overlapping executions serialize a step at a time.
 
 **Short-circuiting.** results-consolidator takes everything in
