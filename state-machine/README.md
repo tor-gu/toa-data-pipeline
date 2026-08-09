@@ -100,9 +100,9 @@ aws stepfunctions start-execution \
 date, and each fit covers every match up to that date, so the work grows roughly
 quadratically with the number of dates.
 
-A measured rebuild took **207s for 66 dates**. Extrapolating quadratically from that
-(~0.048 · n² seconds), `scores-updater`'s `timeout = 600` covers around 110 dates, and
-the Lambda hard ceiling of 900s would cover around 140.
+A measured rebuild took **489s for 181 dates**. Extrapolating quadratically from that
+(~0.0149 · n² seconds), `scores-updater`'s `timeout = 600` covers around 200 dates, and
+the Lambda hard ceiling of 900s would cover around 245.
 
 Those numbers are for the default `num_executors: 1`, where the fits run one at a time.
 The score Lambda is a separate function with no reserved concurrency, so a bigger
