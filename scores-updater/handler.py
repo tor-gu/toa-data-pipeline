@@ -34,12 +34,13 @@ def expand_pairs(match_id, order):
     ]
 
 
-def invoke_score_lambda(pairs):
+def invoke_score_lambda(pairs, initial_strengths=None):
+    body = {"results": pairs, "sd": SD, "unit_win_prob": UNIT_WIN_PROB}
+    if initial_strengths:
+        body["initial_strengths"] = initial_strengths
     response = lambda_client.invoke(
         FunctionName=SCORE_FUNCTION_NAME,
-        Payload=json.dumps(
-            {"results": pairs, "sd": SD, "unit_win_prob": UNIT_WIN_PROB}
-        ),
+        Payload=json.dumps(body),
     )
     payload = json.loads(response["Payload"].read())
     if response.get("FunctionError"):
@@ -51,21 +52,30 @@ def invoke_score_lambda(pairs):
     return json.loads(payload["body"])["scores"]
 
 
-def score_date(consolidated, date):
+def score_date(consolidated, date, initial_strengths=None):
     """Fit one date over every match up to and including it.
 
     Reads `consolidated` but never mutates it, so several of these can run at
     once against the same DataFrame.
+
+    `initial_strengths` is the previous date's scores, if available.
     """
     subset = consolidated[consolidated[ResultsCol.DATE] <= date]
     pairs = []
     for match_id, order in zip(subset[ResultsCol.MATCH_ID], subset[ResultsCol.ORDER]):
         pairs.extend(expand_pairs(match_id, order))
 
-    scored = invoke_score_lambda(pairs)
+    scored = invoke_score_lambda(pairs, initial_strengths)
     for row in scored:
         row[ScoresCol.DATE] = date
-    logger.info("scored date", extra={"date": date, "num_scores": len(scored)})
+    logger.info(
+        "scored date",
+        extra={
+            "date": date,
+            "num_scores": len(scored),
+            "num_initial_strengths": len(initial_strengths or []),
+        },
+    )
     return scored
 
 
@@ -101,7 +111,7 @@ def handler(event, _context):
 
         new_rows = score_dates(
             dates_to_process,
-            lambda date: score_date(consolidated, date),
+            lambda date, seed: score_date(consolidated, date, seed),
             num_executors,
         )
 
