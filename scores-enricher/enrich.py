@@ -60,11 +60,25 @@ def add_score_delta(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_rank_delta(df: pd.DataFrame) -> pd.DataFrame:
+    """Add a `rank_delta` column. For each album, the number of places it
+    gained since the previous date it was scored. Rank is lower-is-better, so
+    this is the previous rank minus the current one. Null for
+    albums where `is_new` is True.
+    """
+    df = df.sort_values([ScoresCol.ID, ScoresCol.DATE], ignore_index=True)
+    previous = df.groupby(ScoresCol.ID)[ScoresCol.RANK].shift()
+    df[ScoresCol.RANK_DELTA] = previous - df[ScoresCol.RANK]
+    df.loc[df[ScoresCol.IS_NEW], ScoresCol.RANK_DELTA] = None
+    return df
+
+
 def enrich(df: pd.DataFrame, tolerance: float) -> pd.DataFrame:
     """Apply all enrichments to a scores DataFrame, adding `rank`, `is_new`,
-    and `score_delta` columns.
+    `score_delta` and `rank_delta` columns.
     """
     df = add_ranks(df, tolerance)
     df = add_is_new(df)
     df = add_score_delta(df)
+    df = add_rank_delta(df)
     return df

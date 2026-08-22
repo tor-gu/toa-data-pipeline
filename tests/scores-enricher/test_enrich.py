@@ -2,7 +2,14 @@ import math
 
 import pandas as pd
 import pytest
-from enrich import _assign_ranks, add_is_new, add_ranks, add_score_delta
+from enrich import (
+    _assign_ranks,
+    add_is_new,
+    add_rank_delta,
+    add_ranks,
+    add_score_delta,
+    enrich,
+)
 from toa.columns import ScoresCol
 
 TOLERANCE = 0.000005
@@ -193,3 +200,139 @@ def test_add_score_delta_no_cross_album_contamination():
     result = result.set_index([ScoresCol.ID, ScoresCol.DATE])
     assert result.loc[("a", "2024-01-02"), ScoresCol.SCORE_DELTA] == pytest.approx(0.5)
     assert result.loc[("b", "2024-01-02"), ScoresCol.SCORE_DELTA] == pytest.approx(0.5)
+
+
+# ── add_rank_delta ─────────────────────────────────────────────────────────────
+
+
+def make_ranked_df(rows):
+    """Like `make_enriched_df`, plus the `rank` column that `add_rank_delta`
+    reads."""
+    return pd.DataFrame(
+        rows,
+        columns=[
+            ScoresCol.ID,
+            ScoresCol.SCORE,
+            ScoresCol.DATE,
+            ScoresCol.ROBUSTNESS,
+            ScoresCol.IS_NEW,
+            ScoresCol.RANK,
+        ],
+    )
+
+
+def test_add_rank_delta_null_on_first():
+    df = make_ranked_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0, True, 3.0),
+            ("a", 1.5, "2024-01-02", 1.0, False, 2.0),
+        ]
+    )
+    result = add_rank_delta(df).set_index([ScoresCol.ID, ScoresCol.DATE])
+    assert math.isnan(result.loc[("a", "2024-01-01"), ScoresCol.RANK_DELTA])
+
+
+def test_add_rank_delta_moving_up_is_positive():
+    df = make_ranked_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0, True, 8.0),
+            ("a", 1.5, "2024-01-02", 1.0, False, 3.0),
+        ]
+    )
+    result = add_rank_delta(df).set_index([ScoresCol.ID, ScoresCol.DATE])
+    assert result.loc[("a", "2024-01-02"), ScoresCol.RANK_DELTA] == pytest.approx(5.0)
+
+
+def test_add_rank_delta_moving_down_is_negative():
+    df = make_ranked_df(
+        [
+            ("a", 1.5, "2024-01-01", 1.0, True, 3.0),
+            ("a", 1.0, "2024-01-02", 1.0, False, 8.0),
+        ]
+    )
+    result = add_rank_delta(df).set_index([ScoresCol.ID, ScoresCol.DATE])
+    assert result.loc[("a", "2024-01-02"), ScoresCol.RANK_DELTA] == pytest.approx(-5.0)
+
+
+def test_add_rank_delta_unchanged_rank_is_positive_zero():
+    df = make_ranked_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0, True, 2.0),
+            ("a", 1.1, "2024-01-02", 1.0, False, 2.0),
+        ]
+    )
+    result = add_rank_delta(df).set_index([ScoresCol.ID, ScoresCol.DATE])
+    delta = result.loc[("a", "2024-01-02"), ScoresCol.RANK_DELTA]
+    assert delta == 0.0
+    # Not -0.0: consumers format the sign, and "-0" would read as a drop.
+    assert math.copysign(1.0, delta) == 1.0
+
+
+def test_add_rank_delta_fractional_ranks():
+    # A tie resolving into a clean ordering moves the album half a place.
+    df = make_ranked_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0, True, 1.5),
+            ("a", 1.2, "2024-01-02", 1.0, False, 1.0),
+        ]
+    )
+    result = add_rank_delta(df).set_index([ScoresCol.ID, ScoresCol.DATE])
+    assert result.loc[("a", "2024-01-02"), ScoresCol.RANK_DELTA] == pytest.approx(0.5)
+
+
+def test_add_rank_delta_no_cross_album_contamination():
+    df = make_ranked_df(
+        [
+            ("a", 1.0, "2024-01-01", 1.0, True, 2.0),
+            ("b", 5.0, "2024-01-01", 1.0, True, 1.0),
+            ("a", 6.0, "2024-01-02", 1.0, False, 1.0),
+            ("b", 5.5, "2024-01-02", 1.0, False, 2.0),
+        ]
+    )
+    result = add_rank_delta(df).set_index([ScoresCol.ID, ScoresCol.DATE])
+    assert result.loc[("a", "2024-01-02"), ScoresCol.RANK_DELTA] == pytest.approx(1.0)
+    assert result.loc[("b", "2024-01-02"), ScoresCol.RANK_DELTA] == pytest.approx(-1.0)
+
+
+# ── enrich ─────────────────────────────────────────────────────────────────────
+
+
+def test_enrich_adds_every_column():
+    df = make_scores_df(
+        [
+            ("a", 2.0, "2024-01-01", 1.0),
+            ("b", 1.0, "2024-01-01", 1.0),
+            ("a", 1.0, "2024-01-02", 1.0),
+            ("b", 2.0, "2024-01-02", 1.0),
+        ]
+    )
+    result = enrich(df, TOLERANCE)
+    for column in (
+        ScoresCol.RANK,
+        ScoresCol.IS_NEW,
+        ScoresCol.SCORE_DELTA,
+        ScoresCol.RANK_DELTA,
+    ):
+        assert column in result.columns
+    assert len(result) == len(df)
+
+
+def test_enrich_tracks_a_swap_end_to_end():
+    # "a" starts on top and "b" overtakes it on the second date.
+    df = make_scores_df(
+        [
+            ("a", 2.0, "2024-01-01", 1.0),
+            ("b", 1.0, "2024-01-01", 1.0),
+            ("a", 1.0, "2024-01-02", 1.0),
+            ("b", 2.0, "2024-01-02", 1.0),
+        ]
+    )
+    result = enrich(df, TOLERANCE).set_index([ScoresCol.ID, ScoresCol.DATE])
+
+    # The debut date has nothing to move from.
+    assert math.isnan(result.loc[("a", "2024-01-01"), ScoresCol.RANK_DELTA])
+    assert math.isnan(result.loc[("b", "2024-01-01"), ScoresCol.RANK_DELTA])
+
+    # The match itself: "b" gained a place, "a" lost one.
+    assert result.loc[("b", "2024-01-02"), ScoresCol.RANK_DELTA] == pytest.approx(1.0)
+    assert result.loc[("a", "2024-01-02"), ScoresCol.RANK_DELTA] == pytest.approx(-1.0)
