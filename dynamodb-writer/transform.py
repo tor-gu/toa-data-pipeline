@@ -29,17 +29,19 @@ def to_optional_decimal(value):
 
 
 def build_scores_lookup(scores_df):
-    """Index `new_score`, `is_new` and `score_delta` by (album id, date). Covers
-    only the rows present in `scores_df`.
+    """Index the album's standing as of a date — `new_score`, `new_rank`,
+    `is_new`, `score_delta` and `rank_delta` — by (album id, date). Covers only
+    the rows present in `scores_df`.
 
-    `new_score` is required here — unlike `score_delta`, which is legitimately
-    absent on an album's first appearance — so it takes the same `to_decimal`
-    treatment `score_item` gives the same column."""
+    Note that `score_delta` and `rank_delta` will be null on an album's first
+    appearance."""
     return {
         (row[ScoresCol.ID], row[ScoresCol.DATE]): {
             "new_score": to_decimal(row[ScoresCol.SCORE]),
+            "new_rank": to_decimal(row[ScoresCol.RANK]),
             "is_new": bool(row[ScoresCol.IS_NEW]),
             "score_delta": to_optional_decimal(row[ScoresCol.SCORE_DELTA]),
+            "rank_delta": to_optional_decimal(row[ScoresCol.RANK_DELTA]),
         }
         for _, row in scores_df.iterrows()
     }
@@ -135,8 +137,15 @@ def stale_viz_keys(existing_sks, new_sks):
 
 def ranking_entry(i, album_id, date, names, scores_lookup):
     """Build one entry of a match ranking. `i` is the 0-based position and
-    becomes a 1-based rank. `new_score` is the album's score as of `date`;
-    it, `is_new` and `score_delta` are None when (`album_id`, `date`) is absent
+    becomes a 1-based rank.
+
+    Two different ranks live in this entry. `rank` is the album's position
+    *within this match*, running 1..N over the result order. `new_rank` is its
+    standing among *all* albums as of `date`, and `rank_delta` is the movement
+    of that standing — not of `rank`. The pair mirrors `new_score` and
+    `score_delta`.
+
+    Everything drawn from the lookup is None when (`album_id`, `date`) is absent
     from `scores_lookup`."""
     name = names.get(album_id, {})
     scores = scores_lookup.get((album_id, date), {})
@@ -147,6 +156,8 @@ def ranking_entry(i, album_id, date, names, scores_lookup):
         "album": name.get("album", ""),
         "short-name": name.get("short-name", ""),
         "new_score": scores.get("new_score"),
+        "new_rank": scores.get("new_rank"),
         "is_new": scores.get("is_new"),
         "score_delta": scores.get("score_delta"),
+        "rank_delta": scores.get("rank_delta"),
     }

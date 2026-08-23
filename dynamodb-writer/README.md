@@ -22,9 +22,12 @@ Plus a metadata item: `id="METADATA"`, `date="latest_date"`, `value=<latest date
 | Attribute | Notes |
 |---|---|
 | `match_id`, `date` | |
-| `ranking` | ordered list of `{rank, id, artist, album, short-name, new_score, is_new, score_delta}`|
+| `ranking` | ordered list of `{rank, id, artist, album, short-name, new_score, new_rank, is_new, score_delta, rank_delta}`|
 | `gsi_pk` | constant `"MATCH"` |
 | `date_match_id` | `"<date>#<match_id>"` — GSI sort key for recency queries |
+
+Note: `rank` is the rank within the match. `new_rank` and `rank_delta` refer to global
+rank among all albums.
 
 ### `album_matches` — `album_id` (hash) + `match_id` (range)
 
