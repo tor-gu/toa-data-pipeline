@@ -1,11 +1,13 @@
 # names-consolidator
 
 Reads every `name_<id>.json` under `names/unprocessed/`, fills in a `short-name`
-where the uploaded file doesn't supply one, and writes
-`names/consolidated/names.parquet`.
+where the uploaded file doesn't supply one, merges the result into
+`names/consolidated/names.parquet`, and moves the originals to `names/processed/`.
 
-Input files are never moved, so `names/unprocessed/` accumulates and is re-read in
-full on every run — the Parquet is rebuilt from scratch rather than merged into.
+The merge is an upsert on `id`: a re-uploaded name replaces its existing row
+rather than duplicating it. The move happens after the Parquet write, so an
+interrupted run leaves its inputs in `names/unprocessed/` and re-merges them on
+the next run.
 
 ## Input
 
@@ -31,9 +33,16 @@ A `short-name` field may be included to override the generated one.
 
 ## Short names
 
-Only generated when the JSON has no `short-name`. An album title that already fits
-within `SHORT_NAME_MAX_LEN` is used as-is; otherwise it is cut at the last word
-boundary falling in `SHORT_NAME_MIN_LEN`–`SHORT_NAME_MAX_LEN`, or hard-truncated to
-the max if there is no boundary in that range. Both lengths are environment variables.
+Only generated when the JSON has no `short-name` (an empty string counts as
+absent). An album title that already fits within `SHORT_NAME_MAX_LEN` is used
+as-is; otherwise it is cut at the last word boundary falling in
+`SHORT_NAME_MIN_LEN`–`SHORT_NAME_MAX_LEN`, or hard-truncated to the max if there
+is no boundary in that range. Both lengths are environment variables.
 
-Returns `{"names_consolidated": <count>}`.
+Because names are merged rather than rebuilt, a short name is fixed once it
+lands in the Parquet — changing `SHORT_NAME_MIN_LEN`/`SHORT_NAME_MAX_LEN` only
+affects names consolidated after the change. To re-derive them all, copy
+`names/processed/` back to `names/unprocessed/` and run the pipeline.
+
+Returns `{"files_processed": <files read this run>, "names_consolidated": <total
+rows in the Parquet>}`.
