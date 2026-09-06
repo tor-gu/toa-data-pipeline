@@ -15,6 +15,7 @@ pythonpath = [
     "dynamodb-writer",
     "names-consolidator",
     "pipeline-initializer",
+    "results-consolidator",
     "scores-enricher",
     "scores-updater",
     "statistics-builder",

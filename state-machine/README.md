@@ -10,7 +10,7 @@ flowchart TD
     Init --> ConsolidatePar
     ConsolidatePar --> Check{CheckIfFilesProcessed}
     Check -->|rebuild = true| UpdateScores
-    Check -->|files_processed > 0| UpdateScores
+    Check -->|files_processed > 0 or redactions_processed > 0| UpdateScores
     Check -->|default| FinalizeSuccess
     UpdateScores --> EnrichScores
     EnrichScores --> Par
@@ -129,7 +129,9 @@ pipeline-initializer and pipeline-finalizer is capped at
 concurrent invocation is throttled with `Lambda.TooManyRequestsException` — which triggers a retry. So, overlapping executions serialize a step at a time.
 
 **Short-circuiting.** results-consolidator takes everything in
-`results/unprocessed/`, not just the file that triggered it. Executions behind it find nothing, return `files_processed: 0`, and jump to the finalizer.
+`results/unprocessed/`, not just the file that triggered it. Executions behind it find nothing, return `files_processed: 0` and `redactions_processed: 0`, and jump to the finalizer. The `CheckIfFilesProcessed` choices are OR-ed, so a run that carries only a redaction still proceeds to `UpdateScores`.
+
+`redactions_processed` counts album slots newly removed from the results, so a no-op redaction does not trigger a rescore.
 
 As long as every execution succeeds (eventually), the end state is correct. 
 

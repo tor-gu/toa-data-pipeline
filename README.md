@@ -37,7 +37,7 @@ See [state-machine](state-machine/) for the full flow, including the error paths
 - **[results-watcher](results-watcher/)** — S3 trigger; starts the state machine on a new upload.
 - **[pipeline-initializer](pipeline-initializer/)** — first state-machine step; validates and normalizes input.
 - **[names-consolidator](names-consolidator/)** — merges new name JSONs into `names.parquet`, auto-generating short names.
-- **[results-consolidator](results-consolidator/)** — merges new result JSONs into `results.parquet`; short-circuits to the finalizer if nothing new.
+- **[results-consolidator](results-consolidator/)** — merges new result JSONs into `results.parquet`. Redactions are also handled here.
 - **[scores-updater](scores-updater/)** — generates scores for each unscored date.
 - **[scores-enricher](scores-enricher/)** — adds `rank` / `is_new` / `score_delta` columns.
 - **[statistics-builder](statistics-builder/)** — computes global summary statistics.
