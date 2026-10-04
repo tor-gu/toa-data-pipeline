@@ -7,9 +7,13 @@ Kept free of boto3 and I/O so the item shapes can be unit tested directly;
 from decimal import Decimal
 
 import pandas as pd
-from toa.columns import ScoresCol, StatisticsCol, VizCol
+from toa.columns import NamesCol, ScoresCol, StatisticsCol, VizCol
 
 VIZ_PK = "VIZ"
+
+# Every match row carries this constant partition key on the recent-index GSI, so
+# the index is one partition that orders matches by date.
+MATCHES_PK = "MATCH"
 
 
 def to_decimal(value):
@@ -26,6 +30,26 @@ def to_optional_decimal(value):
 
     Use for fields that are legit nullable."""
     return None if pd.isna(value) else to_decimal(value)
+
+
+def build_names(names_df):
+    """Index display names by album id: `{id: {artist, album, short-name}}`."""
+    return {
+        row[NamesCol.ID]: {
+            "artist": row[NamesCol.ARTIST],
+            "album": row[NamesCol.ALBUM],
+            "short-name": row[NamesCol.SHORT_NAME],
+        }
+        for _, row in names_df.iterrows()
+    }
+
+
+def select_since(df, date_col, earliest_date):
+    """Rows of `df` dated on or after `earliest_date`, or all of `df` when it is
+    None (a full rewrite)."""
+    if earliest_date is None:
+        return df
+    return df[df[date_col] >= earliest_date]
 
 
 def build_scores_lookup(scores_df):
@@ -56,6 +80,31 @@ def score_item(row, name):
         "score": to_decimal(row[ScoresCol.SCORE]),
         "robustness": to_decimal(row[ScoresCol.ROBUSTNESS]),
         "rank": to_decimal(row[ScoresCol.RANK]),
+        "artist": name.get("artist", ""),
+        "album": name.get("album", ""),
+        "short-name": name.get("short-name", ""),
+    }
+
+
+def match_item(match_id, date, ranking):
+    """Build a `matches` item. `gsi_pk` puts every match in the one partition of
+    the recent-index GSI, and `date_match_id` orders them by date there."""
+    return {
+        "match_id": match_id,
+        "date": date,
+        "ranking": ranking,
+        "gsi_pk": MATCHES_PK,
+        "date_match_id": f"{date}#{match_id}",
+    }
+
+
+def album_match_item(album_id, match_id, date, name):
+    """Build an `album_matches` item from its keys and the album's name entry.
+    Missing name fields default to empty strings."""
+    return {
+        "album_id": album_id,
+        "match_id": match_id,
+        "date": date,
         "artist": name.get("artist", ""),
         "album": name.get("album", ""),
         "short-name": name.get("short-name", ""),
@@ -127,12 +176,6 @@ def viz_match_item(row):
         "date": row[VizCol.DATE],
         "ranking": list(row[VizCol.ORDER]),
     }
-
-
-def stale_viz_keys(existing_sks, new_sks):
-    """Sort keys in `existing_sks` that are absent from `new_sks`, sorted for a
-    stable delete order."""
-    return sorted(set(existing_sks) - set(new_sks))
 
 
 def ranking_entry(i, album_id, date, names, scores_lookup):

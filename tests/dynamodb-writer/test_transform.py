@@ -1,13 +1,17 @@
 from decimal import Decimal
 
 import pandas as pd
-from toa.columns import ScoresCol, StatisticsCol, VizCol
+from toa.columns import NamesCol, ScoresCol, StatisticsCol, VizCol
 from transform import (
+    MATCHES_PK,
     VIZ_PK,
+    album_match_item,
+    build_names,
     build_scores_lookup,
+    match_item,
     ranking_entry,
     score_item,
-    stale_viz_keys,
+    select_since,
     statistics_items,
     to_decimal,
     to_optional_decimal,
@@ -302,11 +306,67 @@ def test_viz_match_item_sk_sorts_chronologically():
     }
 
 
-def test_stale_viz_keys_diff():
-    existing = ["DATES", "ALBUM#a", "ALBUM#b", "MATCH#2024-01-01#m1"]
-    new = ["DATES", "ALBUM#a", "MATCH#2024-01-01#m1"]
-    assert stale_viz_keys(existing, new) == ["ALBUM#b"]
+# ── build_names ─────────────────────────────────────────────────────────────
 
 
-def test_stale_viz_keys_empty_when_no_change():
-    assert stale_viz_keys(["DATES"], ["DATES"]) == []
+def test_build_names_indexes_by_id():
+    df = pd.DataFrame(
+        {
+            NamesCol.ID: ["a"],
+            NamesCol.ARTIST: ["Artist"],
+            NamesCol.ALBUM: ["Album"],
+            NamesCol.SHORT_NAME: ["Alb"],
+        }
+    )
+    assert build_names(df) == {
+        "a": {"artist": "Artist", "album": "Album", "short-name": "Alb"}
+    }
+
+
+# ── select_since ────────────────────────────────────────────────────────────
+
+
+def _dated(*dates):
+    return pd.DataFrame({"date": list(dates)})
+
+
+def test_select_since_none_returns_everything():
+    df = _dated("2024-01-01", "2024-02-01")
+    assert select_since(df, "date", None) is df
+
+
+def test_select_since_is_inclusive():
+    df = _dated("2024-01-01", "2024-02-01", "2024-03-01")
+    selected = select_since(df, "date", "2024-02-01")
+    assert list(selected["date"]) == ["2024-02-01", "2024-03-01"]
+
+
+# ── match_item / album_match_item ───────────────────────────────────────────
+
+
+def test_match_item_shape():
+    ranking = [{"rank": 1, "id": "a"}]
+    assert match_item("m1", "2024-01-01", ranking) == {
+        "match_id": "m1",
+        "date": "2024-01-01",
+        "ranking": ranking,
+        "gsi_pk": MATCHES_PK,
+        "date_match_id": "2024-01-01#m1",
+    }
+
+
+def test_album_match_item_shape():
+    name = {"artist": "Artist", "album": "Album", "short-name": "Alb"}
+    assert album_match_item("a", "m1", "2024-01-01", name) == {
+        "album_id": "a",
+        "match_id": "m1",
+        "date": "2024-01-01",
+        "artist": "Artist",
+        "album": "Album",
+        "short-name": "Alb",
+    }
+
+
+def test_album_match_item_missing_name_defaults_to_empty():
+    item = album_match_item("a", "m1", "2024-01-01", {})
+    assert (item["artist"], item["album"], item["short-name"]) == ("", "", "")

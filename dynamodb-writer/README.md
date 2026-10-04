@@ -1,8 +1,56 @@
 # dynamodb-writer
 
 Reads the pipeline's Parquet outputs from S3 and writes them to the five DynamoDB
-tables. Takes `earliest_date` to write only new/updated records, or `rebuild: true`
-to rewrite everything.
+tables. It runs in one of two modes.
+
+## Modules
+
+`handler.py` is the main function. It decides the mode, reads the inputs, writes, deletes stale rows, clears the sentinel, and logs each step. The work is done in the following modules:
+
+| Module | Holds | I/O |
+|---|---|---|
+| `transform.py` | item builders (`score_item`, `match_item`, …), `build_names`, `select_since` | none |
+| `rewrite.py` | full-rewrite decisions: `rewrite_mode`, the empty-input guard, `stale_keys` | none |
+| `inputs.py` | `read_inputs`: the seven Parquet files as one `Inputs` | S3 (awswrangler) |
+| `tables.py` | `write_all` and `delete_all_stale`, plus the per-table writes they call | DynamoDB |
+| `sentinel.py` | `read_rewrite_sentinel` and the conditional `clear_rewrite_sentinel` | S3 |
+
+The I/O modules take `Table` objects and an S3 client as arguments and don't log, so the
+tests drive them with fakes (`tests/dynamodb-writer/test_tables.py`, `test_sentinel.py`).
+
+## Modes
+
+| Mode | When | What it does |
+|---|---|---|
+| incremental | default | Upserts `scores` and `matches`/`album_matches` rows with `date >= earliest_date`. Never deletes |
+| full | `rebuild: true`, **or** the rewrite sentinel is set | Upserts every row, then deletes every row it did not write |
+
+`global_statistics` and `viz` are snapshots and are rewritten in full in both modes.
+
+Incremental writes are upserts, so they do not support things like
+redactions.
+
+Full rewrites write every row, and then delete stale rows.
+
+When there is a redaction, the upstream process leave a [rewrite sentinel](#the-rewrite-sentinel) in S3, which triggers a full rewrite.
+
+Deleting comes last so readers never see a gap. `scores` keeps its `METADATA` item because the writer rewrites it.
+
+### Empty-input guard
+
+A full rewrite deletes whatever the inputs lack, so it refuses to start if
+`results.parquet` or `enriched_scores.parquet` is empty. A lost Parquet file then fails the run instead of wiping the tables.
+
+## The rewrite sentinel
+
+`flags/dynamodb_rewrite_pending.json` in the data bucket. 
+
+Currently, this is used in only one case: when `results-consolidator` has processed redactions.
+
+The `dyanamodb-writer` reads the sentinel `HEAD` and saves the entity tag
+before reading any Parquet file.  
+
+After a full-rewrite, the sentinel is removed -- but only if the entity tag matches. (This guards against a second in-flight redaction processed while we were busy.)
 
 ## Tables
 

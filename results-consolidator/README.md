@@ -84,6 +84,14 @@ rule is applied uniformly on every run.
 
 It is `null` when nothing was processed.
 
-## Ordering and idempotence
+## The DynamoDB rewrite sentinel
+
+In some cases, we prefer a full DB rewrite rather than an incremental update. In this case, we set an sentinal in S3, 
+`flags/dynamodb_rewrite_pending.json`.  The [`dynamodb-writer`](../dynamodb-writer/) is responsible for removing the sentinel after a successful rewrite.
+
+Currently, the only use-case for this is
+a redaction -- we don't want to require `dynamodb-writer`. So, better to ask it to do a full-refresh from the consolidated results.
+
+We create the sentinel before updating `redactions.parquet`. This ensures that a failure while processing redactions will not cause us to miss the required full-rewrite.
 
 All three Parquet writes happen before any original is moved, so an interrupted run leaves its inputs in `unprocessed/` and reprocessing them is safe.

@@ -86,6 +86,8 @@ with a bare string or array fails with `States.ResultPathMatchFailure`, because 
 A rebuild recomputes everything from the consolidated Parquet data, instead of only the
 dates touched by the newly uploaded results. Nothing needs to be sitting in
 `results/unprocessed/` — the input to a rebuild is what has already been consolidated.
+`dynamodb-writer` does a clean full rewrite: it writes every row, then deletes every row
+it did not write.
 
 Start one by hand:
 
@@ -132,6 +134,13 @@ concurrent invocation is throttled with `Lambda.TooManyRequestsException` — wh
 `results/unprocessed/`, not just the file that triggered it. Executions behind it find nothing, return `files_processed: 0` and `redactions_processed: 0`, and jump to the finalizer. The `CheckIfFilesProcessed` choices are OR-ed, so a run that carries only a redaction still proceeds to `UpdateScores`.
 
 `redactions_processed` counts album slots newly removed from the results, so a no-op redaction does not trigger a rescore.
+
+**Redactions and DynamoDB.** The state machine carries nothing about redactions to
+`dynamodb-writer`. Instead, results-consolidator leaves a sentinel in S3
+(`flags/dynamodb_rewrite_pending.json`), and the writer does a full rewrite whenever it
+finds the sentinel. If the redaction run fails after consolidation, the sentinel stays set. The
+next execution that reaches `SyncDynamoDB` (the next result upload, or a manual rebuild)
+then does the full rewrite.
 
 As long as every execution succeeds (eventually), the end state is correct. 
 

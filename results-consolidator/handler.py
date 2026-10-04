@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timezone
 
 import awswrangler as wr
 import boto3
@@ -16,6 +17,7 @@ from results_consolidate import (
 from toa.columns import RedactionsCol, ResultsCol
 from toa.logging import Domain, get_logger
 from toa.paths import (
+    DYNAMODB_REWRITE_PENDING_KEY,
     REDACTIONS_CONSOLIDATED_KEY,
     REDACTIONS_PROCESSED_PREFIX,
     REDACTIONS_UNPROCESSED_PREFIX,
@@ -73,6 +75,25 @@ def _move_to_processed(keys, processed_prefix):
         s3.delete_object(Bucket=DATA_BUCKET, Key=key)
 
 
+def _set_rewrite_sentinel(redacted_ids):
+    """Tell the downstream DB writer that a full-rewrite is required."""
+
+    # Currently, this is the only place we set the full-rewrite-required sentinel
+    # The contents of the file are only for observability. If we later find a new
+    # use for the sentinel, we will standardize the format of the contents at that time.
+    body = {
+        "reason": "redaction",
+        "set_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "redacted_ids": sorted(redacted_ids),
+    }
+    s3.put_object(
+        Bucket=DATA_BUCKET,
+        Key=DYNAMODB_REWRITE_PENDING_KEY,
+        Body=json.dumps(body).encode(),
+        ContentType="application/json",
+    )
+
+
 def handler(event, context):
     logger.info("handler started")
     try:
@@ -83,7 +104,6 @@ def handler(event, context):
             logger.info("no unprocessed files found")
             return {
                 "files_processed": 0,
-                "redaction_files_processed": 0,
                 "redactions_processed": 0,
                 "earliest_date": None,
             }
@@ -104,6 +124,13 @@ def handler(event, context):
         )
         redaction_date = earliest_redacted_date(unredacted, new_redacted_ids)
         redactions_removed = count_redacted_occurrences(unredacted, new_redacted_ids)
+
+        # Set the db-rewrite sentinel before updating redactions.parquet, in case we
+        # crash in between: once that file holds these ids, a rerun no longer sees
+        # them as new. (Better to rewrite twice than to miss a rewrite.)
+        rewrite_sentinel_set = redactions_removed > 0
+        if rewrite_sentinel_set:
+            _set_rewrite_sentinel(new_redacted_ids)
 
         if new_redactions:
             redactions = merge_redactions(redactions, new_redactions)
@@ -134,6 +161,7 @@ def handler(event, context):
                 "total_records": len(results),
                 "redactions_total": len(redactions),
                 "earliest_date": earliest_date,
+                "rewrite_sentinel_set": rewrite_sentinel_set,
             },
         )
         return {
